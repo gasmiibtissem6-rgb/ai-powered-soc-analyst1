@@ -1,0 +1,33 @@
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict
+
+
+class IncidentBase(BaseModel):
+    title: str
+    description: Optional[str] = None
+    severity: str = "medium"
+    status: str = "open"
+    source: Optional[str] = None
+    assigned_to: Optional[str] = None
+
+
+class IncidentCreate(IncidentBase):
+    pass
+
+
+class IncidentUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    severity: Optional[str] = None
+    status: Optional[str] = None
+    source: Optional[str] = None
+    assigned_to: Optional[str] = None
+
+
+class IncidentResponse(IncidentBase):
+    id: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

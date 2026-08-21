@@ -1,11 +1,11 @@
 from sqlalchemy.orm import Session
 
-from app.models.user import User
 from app.core.security import (
+    create_access_token,
     hash_password,
     verify_password,
-    create_access_token,
 )
+from app.models.user import User
 
 
 class AuthService:
@@ -13,24 +13,23 @@ class AuthService:
     @staticmethod
     def register(
         db: Session,
-        username: str,
+        full_name: str,
         email: str,
         password: str,
-    ):
-
-        existing = (
+    ) -> User:
+        existing_user = (
             db.query(User)
             .filter(User.email == email)
             .first()
         )
 
-        if existing:
+        if existing_user:
             raise ValueError("Email already exists")
 
         user = User(
-            username=username,
+            full_name=full_name,
             email=email,
-            password_hash=hash_password(password),
+            hashed_password=hash_password(password),
         )
 
         db.add(user)
@@ -45,7 +44,6 @@ class AuthService:
         email: str,
         password: str,
     ):
-
         user = (
             db.query(User)
             .filter(User.email == email)
@@ -55,13 +53,16 @@ class AuthService:
         if not user:
             return None
 
+        if not user.is_active:
+            return None
+
         if not verify_password(
             password,
-            user.password_hash,
+            user.hashed_password,
         ):
             return None
 
-        token = create_access_token(user.email)
+        token = create_access_token(str(user.id))
 
         return {
             "access_token": token,

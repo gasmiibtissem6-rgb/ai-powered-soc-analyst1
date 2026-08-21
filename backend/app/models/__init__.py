@@ -1,3 +1,6 @@
 from app.models.user import User
+from app.models.alert import Alert
+from app.models.incident import Incident
+from app.models.ai_analysis import AIAnalysis
 
-__all__ = ["User"]
+__all__ = ["User", "Alert", "Incident", "AIAnalysis"]
