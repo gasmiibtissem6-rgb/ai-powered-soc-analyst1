@@ -4,7 +4,7 @@ from app.api import threat_intelligence
 from app.api.alerts import router as alerts_router
 from app.api.auth import router as auth_router
 from app.api.ai_analysis import router as ai_analysis_router
-
+from app.api import mitre
 app = FastAPI(
     title="AI-Powered SOC Analyst API",
     description="Backend API for the intelligent SOC platform",
@@ -32,3 +32,4 @@ async def health():
         "status": "healthy",
     }
 
+app.include_router(mitre.router)

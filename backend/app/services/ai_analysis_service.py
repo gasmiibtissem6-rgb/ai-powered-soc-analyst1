@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 from app.models.ai_analysis import AIAnalysis
 from app.models.incident import Incident
 from app.schemas.ai_analysis import AIAnalysisCreate, AIAnalysisUpdate
+from app.services.mitre_service import MitreService
+from app.services.llm_service import LLMService
 
 
 class AIAnalysisService:
@@ -82,3 +84,37 @@ class AIAnalysisService:
         db.commit()
 
         return True
+
+    @staticmethod
+    def generate_analysis(
+        db: Session,
+        incident_id: int,
+    ):
+        incident = db.query(Incident).filter(
+            Incident.id == incident_id
+        ).first()
+
+        if not incident:
+            return None
+
+        llm_service = LLMService()
+        mitre_service = MitreService()
+
+        result = llm_service.analyze_incident(
+            title=incident.title,
+            description=incident.description,
+            severity=incident.severity,
+            source=incident.source,
+        )
+
+        mitre_value = result.get("mitre_technique", "")
+
+        mitre_id = mitre_value.split(" ")[0].strip()
+
+        mitre_validation = mitre_service.validate_technique(
+            mitre_id
+        )
+
+        result["mitre_validation"] = mitre_validation
+
+        return result
