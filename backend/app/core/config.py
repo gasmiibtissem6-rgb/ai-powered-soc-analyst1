@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str
     LLM_MODEL: str = "qwen/qwen3.6-27b"
     LLM_BASE_URL: str = "https://api.groq.com/openai/v1"
+    ABUSEIPDB_API_KEY: str
 
     model_config = SettingsConfigDict(
         env_file=".env",

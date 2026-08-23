@@ -1,6 +1,6 @@
 from app.api.incidents import router as incidents_router
 from fastapi import FastAPI
-
+from app.api import threat_intelligence
 from app.api.alerts import router as alerts_router
 from app.api.auth import router as auth_router
 from app.api.ai_analysis import router as ai_analysis_router
@@ -17,6 +17,7 @@ app.include_router(auth_router)
 app.include_router(alerts_router)
 app.include_router(incidents_router)
 app.include_router(ai_analysis_router)
+app.include_router(threat_intelligence.router)
 @app.get("/")
 async def root():
     return {
