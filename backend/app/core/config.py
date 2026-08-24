@@ -6,9 +6,15 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
+    # Database
+    DATABASE_URL: str
+
+    # LLM
     GROQ_API_KEY: str
     LLM_MODEL: str = "qwen/qwen3.6-27b"
     LLM_BASE_URL: str = "https://api.groq.com/openai/v1"
+
+    # Threat Intelligence
     ABUSEIPDB_API_KEY: str
 
     model_config = SettingsConfigDict(

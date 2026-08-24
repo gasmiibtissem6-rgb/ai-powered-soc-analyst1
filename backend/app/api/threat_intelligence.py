@@ -50,7 +50,8 @@ def analyze_incident_threat_intelligence(
     results = service.analyze_text(text)
 
     return {
-        "incident_id": incident.id,
-        "title": incident.title,
-        "threat_intelligence": results,
-    }
+    "threat_intelligence": result,
+    "agent_trace": [
+        "Threat Intelligence"
+    ],
+}

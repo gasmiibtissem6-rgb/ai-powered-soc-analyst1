@@ -1,5 +1,5 @@
 from logging.config import fileConfig
-
+from app.models import User, Alert, Incident, AIAnalysis
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
@@ -65,7 +65,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-
-MOONSHOT_API_KEY=ta_vraie_cle_api
-KIMI_MODEL=qwen/qwen3.6-27b
-KIMI_BASE_URL=https://api.moonshot.ai/v1

@@ -1,6 +1,11 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    status,
+)
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
@@ -43,6 +48,47 @@ def get_analyses(
 
 
 # =========================================================
+# GET ANALYSES BY INCIDENT
+# =========================================================
+
+@router.get(
+    "/incident/{incident_id}",
+    response_model=List[AIAnalysisResponse],
+)
+def get_analyses_by_incident(
+    incident_id: int,
+    db: Session = Depends(get_db),
+):
+
+    incident = (
+        db.query(Incident)
+        .filter(
+            Incident.id == incident_id
+        )
+        .first()
+    )
+
+    if not incident:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Incident not found",
+        )
+
+    analyses = (
+        db.query(AIAnalysis)
+        .filter(
+            AIAnalysis.incident_id == incident_id
+        )
+        .order_by(
+            AIAnalysis.id.desc()
+        )
+        .all()
+    )
+
+    return analyses
+
+
+# =========================================================
 # GET ONE AI ANALYSIS
 # =========================================================
 
@@ -54,6 +100,7 @@ def get_analysis(
     analysis_id: int,
     db: Session = Depends(get_db),
 ):
+
     analysis = AIAnalysisService.get_analysis(
         db,
         analysis_id,
@@ -81,6 +128,7 @@ def create_analysis(
     analysis_data: AIAnalysisCreate,
     db: Session = Depends(get_db),
 ):
+
     analysis = AIAnalysisService.create_analysis(
         db,
         analysis_data,
@@ -108,6 +156,7 @@ def update_analysis(
     analysis_data: AIAnalysisUpdate,
     db: Session = Depends(get_db),
 ):
+
     analysis = AIAnalysisService.update_analysis(
         db,
         analysis_id,
@@ -135,6 +184,7 @@ def delete_analysis(
     analysis_id: int,
     db: Session = Depends(get_db),
 ):
+
     deleted = AIAnalysisService.delete_analysis(
         db,
         analysis_id,
@@ -161,12 +211,14 @@ def generate_ai_analysis(
 ):
 
     # -----------------------------------------------------
-    # 1. Récupérer l'incident depuis la base de données
+    # 1. Récupérer l'incident
     # -----------------------------------------------------
 
     incident = (
         db.query(Incident)
-        .filter(Incident.id == incident_id)
+        .filter(
+            Incident.id == incident_id
+        )
         .first()
     )
 
@@ -178,7 +230,6 @@ def generate_ai_analysis(
 
     # -----------------------------------------------------
     # 2. THREAT INTELLIGENCE
-    # Extraire les IP et les vérifier avec AbuseIPDB
     # -----------------------------------------------------
 
     threat_service = ThreatIntelligenceService()
@@ -189,14 +240,21 @@ def generate_ai_analysis(
     )
 
     try:
-        threat_intelligence = threat_service.analyze_text(
-            incident_text
+
+        threat_intelligence = (
+            threat_service.analyze_text(
+                incident_text
+            )
         )
 
     except Exception as exc:
+
         threat_intelligence = [
             {
-                "error": f"Threat Intelligence failed: {str(exc)}"
+                "error": (
+                    "Threat Intelligence failed: "
+                    f"{str(exc)}"
+                )
             }
         ]
 
@@ -207,18 +265,23 @@ def generate_ai_analysis(
     llm = LLMService()
 
     try:
+
         result = llm.analyze_incident(
-    title=incident.title,
-    description=incident.description,
-    severity=incident.severity,
-    source=incident.source,
-    threat_intelligence=threat_intelligence,
-)
+            title=incident.title,
+            description=incident.description,
+            severity=incident.severity,
+            source=incident.source,
+            threat_intelligence=threat_intelligence,
+        )
 
     except Exception as exc:
+
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"LLM analysis failed: {str(exc)}",
+            detail=(
+                "LLM analysis failed: "
+                f"{str(exc)}"
+            ),
         )
 
     # -----------------------------------------------------
@@ -232,11 +295,6 @@ def generate_ai_analysis(
         "",
     )
 
-    # Exemple :
-    # "T1110 - Brute Force"
-    # devient :
-    # "T1110"
-
     mitre_id = (
         mitre_value
         .split(" ")[0]
@@ -244,7 +302,9 @@ def generate_ai_analysis(
     )
 
     if mitre_id:
+
         try:
+
             mitre_validation = (
                 mitre_service.validate_technique(
                     mitre_id
@@ -252,6 +312,7 @@ def generate_ai_analysis(
             )
 
         except Exception as exc:
+
             mitre_validation = {
                 "technique_id": mitre_id,
                 "name": None,
@@ -261,6 +322,7 @@ def generate_ai_analysis(
             }
 
     else:
+
         mitre_validation = {
             "technique_id": None,
             "name": None,
@@ -274,22 +336,55 @@ def generate_ai_analysis(
 
     analysis = AIAnalysis(
         incident_id=incident.id,
+
         summary=result["summary"],
+
         risk_level=result["risk_level"],
-        explanation=result.get("explanation"),
-        recommendation=result.get("recommendation"),
-        mitre_technique=result.get(
-            "mitre_technique"
+
+        explanation=result.get(
+            "explanation"
         ),
+
+        recommendation=result.get(
+            "recommendation"
+        ),
+
+        mitre_technique=mitre_validation.get(
+            "technique_id"
+        ),
+
+        mitre_name=mitre_validation.get(
+            "name"
+        ),
+
+        mitre_valid=mitre_validation.get(
+            "valid",
+            False,
+        ),
+
         model_used="qwen/qwen3.6-27b",
     )
 
-    db.add(analysis)
-    db.commit()
-    db.refresh(analysis)
+    try:
+
+        db.add(analysis)
+        db.commit()
+        db.refresh(analysis)
+
+    except Exception as exc:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Unable to save AI analysis: "
+                f"{str(exc)}"
+            ),
+        )
 
     # -----------------------------------------------------
-    # 6. RETOURNER LE RÉSULTAT COMPLET
+    # 6. RETOUR COMPLET
     # -----------------------------------------------------
 
     return {
@@ -303,7 +398,9 @@ def generate_ai_analysis(
             "source": incident.source,
         },
 
-        "threat_intelligence": threat_intelligence,
+        "threat_intelligence": (
+            threat_intelligence
+        ),
 
         "analysis": {
             "id": analysis.id,
@@ -313,8 +410,12 @@ def generate_ai_analysis(
             "explanation": analysis.explanation,
             "recommendation": analysis.recommendation,
             "mitre_technique": analysis.mitre_technique,
+            "mitre_name": analysis.mitre_name,
+            "mitre_valid": analysis.mitre_valid,
             "model_used": analysis.model_used,
         },
 
-        "mitre_validation": mitre_validation,
+        "mitre_validation": (
+            mitre_validation
+        ),
     }

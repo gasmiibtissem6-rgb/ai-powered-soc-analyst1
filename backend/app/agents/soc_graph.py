@@ -1,11 +1,19 @@
-from typing import TypedDict, Literal
+import operator
 
-from langgraph.checkpoint.memory import InMemorySaver
+from typing import TypedDict, Literal, Annotated
+
+from psycopg import Connection
+from psycopg.rows import dict_row
+
+from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import interrupt
 
+from app.core.config import settings
+
 from app.services.llm_service import LLMService
 from app.services.mitre_service import MitreService
+from app.services.rag_service import RAGService
 from app.services.threat_intelligence_service import (
     ThreatIntelligenceService,
 )
@@ -16,34 +24,63 @@ from app.services.threat_intelligence_service import (
 # =========================================================
 
 class SOCState(TypedDict, total=False):
+
     incident: dict
+
     triage: dict
+
     threat_intelligence: list[dict]
+
+    rag_context: list[dict]
+
     investigation: dict
+
     mitre_validation: dict
+
     human_review: dict
+
     response: dict
+
     report: dict
+
+    agent_trace: Annotated[
+        list[str],
+        operator.add,
+    ]
 
 
 # =========================================================
 # 1. TRIAGE AGENT
 # =========================================================
 
-def triage_agent(state: SOCState) -> dict:
+def triage_agent(
+    state: SOCState,
+) -> dict:
 
-    incident = state.get("incident", {})
+    incident = state.get(
+        "incident",
+        {},
+    )
 
     severity = str(
-        incident.get("severity", "medium")
+        incident.get(
+            "severity",
+            "medium",
+        )
     ).lower().strip()
 
+    triage = {
+        "status": "triaged",
+        "severity": severity,
+        "priority": severity.upper(),
+    }
+
     return {
-        "triage": {
-            "status": "triaged",
-            "severity": severity,
-            "priority": severity.upper(),
-        }
+        "triage": triage,
+
+        "agent_trace": [
+            "Triage"
+        ],
     }
 
 
@@ -55,9 +92,14 @@ def threat_intelligence_agent(
     state: SOCState,
 ) -> dict:
 
-    incident = state.get("incident", {})
+    incident = state.get(
+        "incident",
+        {},
+    )
 
-    service = ThreatIntelligenceService()
+    service = (
+        ThreatIntelligenceService()
+    )
 
     text = (
         f"{incident.get('title', '')} "
@@ -65,9 +107,13 @@ def threat_intelligence_agent(
     )
 
     try:
-        result = service.analyze_text(text)
+
+        result = service.analyze_text(
+            text
+        )
 
     except Exception as exc:
+
         result = [
             {
                 "error": (
@@ -78,7 +124,11 @@ def threat_intelligence_agent(
         ]
 
     return {
-        "threat_intelligence": result
+        "threat_intelligence": result,
+
+        "agent_trace": [
+            "Threat Intelligence"
+        ],
     }
 
 
@@ -90,7 +140,50 @@ def investigation_agent(
     state: SOCState,
 ) -> dict:
 
-    incident = state.get("incident", {})
+    # -----------------------------------------------------
+    # Incident
+    # -----------------------------------------------------
+
+    incident = state.get(
+        "incident",
+        {},
+    )
+
+    threat_intelligence = state.get(
+        "threat_intelligence",
+        [],
+    )
+
+    # -----------------------------------------------------
+    # RAG SEARCH
+    # -----------------------------------------------------
+
+    rag_service = RAGService()
+
+    rag_query = (
+        f"{incident.get('title', '')} "
+        f"{incident.get('description', '')} "
+        f"{incident.get('severity', '')}"
+    )
+
+    try:
+
+        rag_context = rag_service.search(
+            rag_query,
+            limit=3,
+        )
+
+    except Exception as exc:
+
+        print(
+            f"RAG search failed: {str(exc)}"
+        )
+
+        rag_context = []
+
+    # -----------------------------------------------------
+    # LLM ANALYSIS
+    # -----------------------------------------------------
 
     llm = LLMService()
 
@@ -99,29 +192,36 @@ def investigation_agent(
             "title",
             "",
         ),
+
         description=incident.get(
             "description",
             "",
         ),
+
         severity=incident.get(
             "severity",
             "medium",
         ),
+
         source=incident.get(
             "source",
             "unknown",
         ),
-        threat_intelligence=state.get(
-            "threat_intelligence",
-            [],
+
+        threat_intelligence=(
+            threat_intelligence
         ),
+
+        rag_context=rag_context,
     )
 
-    # =========================================
-    # MITRE ATT&CK validation
-    # =========================================
+    # -----------------------------------------------------
+    # MITRE ATT&CK VALIDATION
+    # -----------------------------------------------------
 
-    mitre_service = MitreService()
+    mitre_service = (
+        MitreService()
+    )
 
     mitre_value = result.get(
         "mitre_technique",
@@ -137,13 +237,16 @@ def investigation_agent(
     if mitre_id:
 
         try:
+
             mitre_validation = (
-                mitre_service.validate_technique(
+                mitre_service
+                .validate_technique(
                     mitre_id
                 )
             )
 
         except Exception as exc:
+
             mitre_validation = {
                 "technique_id": mitre_id,
                 "name": None,
@@ -161,9 +264,22 @@ def investigation_agent(
             "valid": False,
         }
 
+    # -----------------------------------------------------
+    # RETURN
+    # -----------------------------------------------------
+
     return {
         "investigation": result,
-        "mitre_validation": mitre_validation,
+
+        "rag_context": rag_context,
+
+        "mitre_validation": (
+            mitre_validation
+        ),
+
+        "agent_trace": [
+            "Investigation"
+        ],
     }
 
 
@@ -207,12 +323,13 @@ def risk_router(
         "critical",
     }
 
-    # Si incident OU IA = HIGH / CRITICAL
-    # => validation humaine
     if (
-        incident_severity in high_risk_levels
-        or ai_risk_level in high_risk_levels
+        incident_severity
+        in high_risk_levels
+        or ai_risk_level
+        in high_risk_levels
     ):
+
         return "human_review"
 
     return "response"
@@ -236,10 +353,6 @@ def human_review_agent(
         {},
     )
 
-    # =========================================
-    # LE GRAPH SE MET EN PAUSE ICI
-    # =========================================
-
     decision = interrupt(
         {
             "message": (
@@ -247,33 +360,37 @@ def human_review_agent(
                 "SOC analyst approval."
             ),
 
-            "incident_id": incident.get(
-                "id"
+            "incident_id": (
+                incident.get("id")
             ),
 
-            "title": incident.get(
-                "title"
+            "title": (
+                incident.get("title")
             ),
 
-            "risk_level": investigation.get(
-                "risk_level"
+            "risk_level": (
+                investigation.get(
+                    "risk_level"
+                )
             ),
 
-            "recommendation": investigation.get(
-                "recommendation"
+            "recommendation": (
+                investigation.get(
+                    "recommendation"
+                )
             ),
 
             "question": (
-                "Approve the recommended response?"
+                "Approve the recommended "
+                "response?"
             ),
         }
     )
 
-    # =========================================
-    # APRÈS Command(resume=...)
-    # =========================================
-
-    if isinstance(decision, dict):
+    if isinstance(
+        decision,
+        dict,
+    ):
 
         approved = bool(
             decision.get(
@@ -309,7 +426,13 @@ def human_review_agent(
     }
 
     return {
-        "human_review": human_review
+        "human_review": (
+            human_review
+        ),
+
+        "agent_trace": [
+            "Human Review"
+        ],
     }
 
 
@@ -335,7 +458,6 @@ def approval_router(
 
         return "response"
 
-    # Rejected
     return "report"
 
 
@@ -409,12 +531,15 @@ def response_agent(
 
         "risk_level": ai_risk,
 
-        # Pas encore d'action SOAR réelle.
         "automatic_execution": False,
 
-        "human_approval_required": high_risk,
+        "human_approval_required": (
+            high_risk
+        ),
 
-        "human_approved": approved,
+        "human_approved": (
+            approved
+        ),
 
         "status": (
             "approved_for_response"
@@ -424,7 +549,11 @@ def response_agent(
     }
 
     return {
-        "response": response
+        "response": response,
+
+        "agent_trace": [
+            "Response"
+        ],
     }
 
 
@@ -446,13 +575,8 @@ def report_agent(
         {},
     )
 
-    mitre = state.get(
+    mitre_validation = state.get(
         "mitre_validation",
-        {},
-    )
-
-    response = state.get(
-        "response",
         {},
     )
 
@@ -461,37 +585,77 @@ def report_agent(
         {},
     )
 
+    response = state.get(
+        "response",
+        {},
+    )
+
+    # -----------------------------------------------------
+    # RAG SOURCES
+    # -----------------------------------------------------
+
+    rag_context = state.get(
+        "rag_context",
+        [],
+    )
+
+    rag_sources = [
+        item.get("source")
+        for item in rag_context
+        if item.get("source")
+    ]
+
+    # -----------------------------------------------------
+    # REPORT
+    # -----------------------------------------------------
+
     report = {
-        "incident_id": incident.get(
-            "id"
+        "incident_id": (
+            incident.get(
+                "id"
+            )
         ),
 
-        "title": incident.get(
-            "title"
+        "title": (
+            incident.get(
+                "title"
+            )
         ),
 
-        "summary": investigation.get(
-            "summary"
+        "summary": (
+            investigation.get(
+                "summary"
+            )
         ),
 
-        "risk_level": investigation.get(
-            "risk_level"
+        "risk_level": (
+            investigation.get(
+                "risk_level"
+            )
         ),
 
-        "mitre_technique": mitre.get(
-            "technique_id"
+        "mitre_technique": (
+            mitre_validation.get(
+                "technique_id"
+            )
         ),
 
-        "mitre_name": mitre.get(
-            "name"
+        "mitre_name": (
+            mitre_validation.get(
+                "name"
+            )
         ),
 
-        "mitre_valid": mitre.get(
-            "valid"
+        "mitre_valid": (
+            mitre_validation.get(
+                "valid"
+            )
         ),
 
-        "recommendation": investigation.get(
-            "recommendation"
+        "recommendation": (
+            investigation.get(
+                "recommendation"
+            )
         ),
 
         "human_approval_required": (
@@ -520,15 +684,23 @@ def report_agent(
                 "not_executed",
             )
         ),
+
+        "rag_sources": (
+            rag_sources
+        ),
     }
 
     return {
-        "report": report
+        "report": report,
+
+        "agent_trace": [
+            "Report"
+        ],
     }
 
 
 # =========================================================
-# CONSTRUCTION LANGGRAPH
+# LANGGRAPH BUILDER
 # =========================================================
 
 builder = StateGraph(
@@ -599,8 +771,13 @@ builder.add_conditional_edges(
     "investigation",
     risk_router,
     {
-        "human_review": "human_review",
-        "response": "response",
+        "human_review": (
+            "human_review"
+        ),
+
+        "response": (
+            "response"
+        ),
     },
 )
 
@@ -613,8 +790,13 @@ builder.add_conditional_edges(
     "human_review",
     approval_router,
     {
-        "response": "response",
-        "report": "report",
+        "response": (
+            "response"
+        ),
+
+        "report": (
+            "report"
+        ),
     },
 )
 
@@ -635,14 +817,30 @@ builder.add_edge(
 
 
 # =========================================================
-# CHECKPOINTER
+# POSTGRESQL CHECKPOINTER
 # =========================================================
 
-checkpointer = InMemorySaver()
+checkpoint_connection = (
+    Connection.connect(
+        settings.DATABASE_URL,
+        autocommit=True,
+        prepare_threshold=0,
+        row_factory=dict_row,
+    )
+)
+
+
+checkpointer = PostgresSaver(
+    checkpoint_connection
+)
+
+
+# Crée les tables LangGraph si nécessaire.
+checkpointer.setup()
 
 
 # =========================================================
-# COMPILE
+# COMPILE GRAPH
 # =========================================================
 
 soc_graph = builder.compile(

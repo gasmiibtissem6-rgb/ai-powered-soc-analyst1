@@ -22,16 +22,41 @@ class LLMService:
         severity: str,
         source: str,
         threat_intelligence: Optional[list[dict]] = None,
+        rag_context: Optional[list[dict]] = None,
     ) -> dict:
 
-        # Transformer Threat Intelligence en texte
+        # =====================================================
+        # 1. THREAT INTELLIGENCE CONTEXT
+        # =====================================================
+
         if threat_intelligence:
             threat_context = json.dumps(
                 threat_intelligence,
                 indent=2,
             )
         else:
-            threat_context = "No threat intelligence data available."
+            threat_context = (
+                "No threat intelligence data available."
+            )
+
+        # =====================================================
+        # 2. RAG CONTEXT
+        # =====================================================
+
+        if rag_context:
+            rag_text = json.dumps(
+                rag_context,
+                indent=2,
+            )
+        else:
+            rag_text = (
+                "No SOC playbook or knowledge base "
+                "context available."
+            )
+
+        # =====================================================
+        # 3. PROMPT
+        # =====================================================
 
         prompt = f"""
 You are an expert SOC cybersecurity analyst.
@@ -39,37 +64,102 @@ You are an expert SOC cybersecurity analyst.
 Analyze the following cybersecurity incident.
 
 INCIDENT
+
 Title: {title}
 Description: {description}
 Severity: {severity}
 Source: {source}
 
+
 THREAT INTELLIGENCE
-The following information comes from AbuseIPDB:
+
+The following information comes from external
+threat intelligence sources such as AbuseIPDB:
 
 {threat_context}
 
-Important:
-Use the Threat Intelligence information when evaluating the incident.
 
-For example:
-- a high abuse score increases suspicion;
-- a known Tor IP increases suspicion;
-- a low abuse score does NOT prove that an incident is harmless;
-- distinguish the reputation of the IP from the malicious behavior observed in the incident.
+SOC KNOWLEDGE BASE / PLAYBOOKS
 
-Return a JSON object containing exactly:
+The following information comes from internal
+SOC playbooks and incident response procedures:
 
-{{
-  "summary": "short incident summary",
-  "risk_level": "low|medium|high|critical",
-  "explanation": "technical explanation combining incident evidence and threat intelligence",
-  "recommendation": "recommended remediation actions",
-  "mitre_technique": "TXXXX - Technique Name"
-}}
+{rag_text}
+
+
+ANALYSIS RULES
+
+Use all available evidence:
+
+1. Incident information.
+2. Threat intelligence.
+3. SOC knowledge base and playbooks.
+
+Important considerations:
+
+- A high abuse score increases suspicion.
+- A known Tor IP increases suspicion.
+- A low abuse score does not prove that an incident is harmless.
+- Distinguish IP reputation from observed malicious behavior.
+- If a legitimate IP shows suspicious behavior, consider spoofing,
+  proxying, NAT, logging errors, or compromised infrastructure.
+- Use the SOC playbook to guide the investigation.
+- Do not blindly copy the playbook.
+- Adapt recommendations to the actual incident.
+- Prefer evidence-based conclusions.
+- Use a valid MITRE ATT&CK technique when possible.
+
+IMPORTANT OUTPUT RULES
+
+- Return exactly ONE complete JSON object.
+- Never use placeholders such as "...".
+- Never omit a required field.
+- risk_level MUST be exactly one of:
+  "low", "medium", "high", "critical".
+- mitre_technique should contain a valid MITRE ATT&CK
+  technique ID and name whenever applicable.
+- Every value must be complete and meaningful.
+
+OUTPUT FORMAT
+
+Return exactly ONE JSON object containing these five keys:
+
+summary
+risk_level
+explanation
+recommendation
+mitre_technique
+
+Rules:
+
+- summary must contain a real summary of THIS incident.
+- explanation must contain a real technical analysis of THIS incident.
+- recommendation must contain concrete actions for THIS incident.
+- risk_level must be exactly:
+  low, medium, high, or critical.
+- mitre_technique must use the format:
+  TXXXX - Technique Name
+
+Never copy instructions into the values.
+
+Never return placeholder values such as:
+- "..."
+- "summary"
+- "short incident summary"
+- "complete short incident summary"
+- "technical explanation"
+- "complete technical explanation"
+- "recommended remediation actions"
+- "complete remediation actions adapted to the incident"
+
+Return JSON only.
 
 Return only the JSON object.
 """
+
+        # =====================================================
+        # 4. CALL LLM
+        # =====================================================
 
         response = self.client.chat.completions.create(
             model=settings.LLM_MODEL,
@@ -78,7 +168,9 @@ Return only the JSON object.
                     "role": "system",
                     "content": (
                         "You are a SOC cybersecurity analyst. "
-                        "Return only the final JSON object."
+                        "Use incident evidence, threat intelligence "
+                        "and SOC knowledge base context. "
+                        "Return only one complete JSON object."
                     ),
                 },
                 {
@@ -89,6 +181,10 @@ Return only the JSON object.
             temperature=0.1,
         )
 
+        # =====================================================
+        # 5. GET RESPONSE CONTENT
+        # =====================================================
+
         content = response.choices[0].message.content
 
         if not content:
@@ -98,6 +194,7 @@ Return only the JSON object.
 
         content = content.strip()
 
+        # Remove Markdown blocks if the model adds them.
         content = re.sub(
             r"```json\s*",
             "",
@@ -105,7 +202,14 @@ Return only the JSON object.
             flags=re.IGNORECASE,
         )
 
-        content = content.replace("```", "")
+        content = content.replace(
+            "```",
+            "",
+        )
+
+        # =====================================================
+        # 6. EXTRACT VALID JSON
+        # =====================================================
 
         decoder = json.JSONDecoder()
 
@@ -132,6 +236,10 @@ Return only the JSON object.
                 "No valid JSON object found in LLM response"
             )
 
+        # =====================================================
+        # 7. VALIDATE REQUIRED FIELDS
+        # =====================================================
+
         required_fields = {
             "summary",
             "risk_level",
@@ -155,6 +263,10 @@ Return only the JSON object.
                 "LLM JSON is missing required fields"
             )
 
+        # =====================================================
+        # 8. NORMALIZE RISK LEVEL
+        # =====================================================
+
         allowed_risks = {
             "low",
             "medium",
@@ -163,14 +275,227 @@ Return only the JSON object.
         }
 
         risk = str(
-            result["risk_level"]
+            result.get(
+                "risk_level",
+                "",
+            )
         ).lower().strip()
 
+        # Variantes possibles produites par le LLM
+        risk_mapping = {
+            "info": "low",
+            "informational": "low",
+            "minimal": "low",
+
+            "moderate": "medium",
+            "moderated": "medium",
+
+            "severe": "high",
+            "serious": "high",
+
+            "very high": "critical",
+            "very_high": "critical",
+            "very-high": "critical",
+        }
+
+        risk = risk_mapping.get(
+            risk,
+            risk,
+        )
+
+        # =====================================================
+        # 9. FALLBACK IF INVALID
+        # =====================================================
+
         if risk not in allowed_risks:
-            raise ValueError(
-                f"Invalid risk level: {risk}"
+
+            incident_severity = str(
+                severity
+            ).lower().strip()
+
+            incident_severity = (
+                risk_mapping.get(
+                    incident_severity,
+                    incident_severity,
+                )
             )
 
+            if incident_severity in allowed_risks:
+                risk = incident_severity
+            else:
+                risk = "medium"
+
         result["risk_level"] = risk
+
+        # =====================================================
+        # 10. CLEAN OTHER FIELDS
+        # =====================================================
+
+                # =====================================================
+        # 10. CLEAN AND VALIDATE TEXT FIELDS
+        # =====================================================
+
+        text_fields = [
+            "summary",
+            "explanation",
+            "recommendation",
+            "mitre_technique",
+        ]
+
+        for field in text_fields:
+
+            value = result.get(field)
+
+            if value is None:
+                result[field] = ""
+            else:
+                result[field] = str(value).strip()
+
+        # Valeurs que le LLM ne doit jamais renvoyer
+        invalid_placeholders = {
+            "",
+            "...",
+            "summary",
+            "short incident summary",
+            "complete short incident summary",
+            "technical explanation",
+            "complete technical explanation",
+            (
+                "complete technical explanation combining "
+                "incident evidence, threat intelligence "
+                "and soc knowledge"
+            ),
+            "recommended remediation actions",
+            "complete remediation actions adapted to the incident",
+        }
+
+        # -----------------------------------------------------
+        # SUMMARY FALLBACK
+        # -----------------------------------------------------
+
+        if result["summary"].lower() in invalid_placeholders:
+            result["summary"] = (
+                f"Suspicious security activity was detected: "
+                f"{title}. {description}"
+            )
+
+        # -----------------------------------------------------
+        # EXPLANATION FALLBACK
+        # -----------------------------------------------------
+
+        if result["explanation"].lower() in invalid_placeholders:
+
+            if threat_intelligence:
+                result["explanation"] = (
+                    "The incident shows suspicious activity that "
+                    "requires investigation. Threat intelligence "
+                    "data was reviewed together with the observed "
+                    "security behavior. The reputation of an IP "
+                    "address alone is not sufficient to determine "
+                    "whether the incident is benign."
+                )
+            else:
+                result["explanation"] = (
+                    "The incident contains suspicious activity "
+                    "that requires further investigation using "
+                    "authentication, network and security logs."
+                )
+
+        # -----------------------------------------------------
+        # RECOMMENDATION FALLBACK
+        # -----------------------------------------------------
+
+        if result["recommendation"].lower() in invalid_placeholders:
+            result["recommendation"] = (
+                "Review authentication logs, network flows and "
+                "firewall logs. Validate the real source of the "
+                "activity before blocking an IP or executing "
+                "containment actions."
+            )
+
+        # -----------------------------------------------------
+        # MITRE FALLBACK
+        # -----------------------------------------------------
+
+        if result["mitre_technique"].lower() in invalid_placeholders:
+
+            incident_text = (
+                f"{title} {description}"
+            ).lower()
+
+            if (
+                "failed login" in incident_text
+                or "login attempts" in incident_text
+                or "brute force" in incident_text
+            ):
+                result["mitre_technique"] = (
+                    "T1110 - Brute Force"
+                )
+            else:
+                result["mitre_technique"] = ""
+
+        # =====================================================
+        # 11. RETURN
+        # =====================================================
+
+        return result
+
+        for field in text_fields:
+
+            value = result.get(
+                field
+            )
+
+            if value is None:
+                result[field] = ""
+
+            else:
+                result[field] = str(
+                    value
+                ).strip()
+
+        # Si le modèle renvoie encore "..."
+        # on évite de conserver un placeholder vide.
+        if result["summary"] in {
+            "",
+            "...",
+        }:
+            result["summary"] = (
+                f"Security incident detected: {title}."
+            )
+
+        if result["explanation"] in {
+            "",
+            "...",
+        }:
+            result["explanation"] = (
+                "The incident requires further investigation "
+                "using available security telemetry."
+            )
+
+        if result["recommendation"] in {
+            "",
+            "...",
+        }:
+            result["recommendation"] = (
+                "Review authentication, network and security logs "
+                "and validate the source of the activity before "
+                "applying containment actions."
+            )
+
+        if result["mitre_technique"] in {
+            "",
+            "...",
+        }:
+            result["mitre_technique"] = (
+                "T1110 - Brute Force"
+                if "login" in title.lower()
+                or "failed" in description.lower()
+                else ""
+            )
+
+        # =====================================================
+        # 11. RETURN
+        # =====================================================
 
         return result

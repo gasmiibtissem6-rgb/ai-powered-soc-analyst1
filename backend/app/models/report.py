@@ -1,7 +1,6 @@
 from datetime import datetime
 
 from sqlalchemy import (
-    Boolean,
     Column,
     DateTime,
     ForeignKey,
@@ -9,14 +8,13 @@ from sqlalchemy import (
     String,
     Text,
 )
-
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.database.session import Base
 
 
-class AIAnalysis(Base):
-    __tablename__ = "ai_analyses"
+class SOCReport(Base):
+    __tablename__ = "soc_reports"
 
     id = Column(
         Integer,
@@ -34,9 +32,30 @@ class AIAnalysis(Base):
         index=True,
     )
 
+    ai_analysis_id = Column(
+        Integer,
+        ForeignKey(
+            "ai_analyses.id",
+            ondelete="CASCADE",
+        ),
+        nullable=True,
+        index=True,
+    )
+
+    thread_id = Column(
+        String(100),
+        nullable=True,
+        index=True,
+    )
+
     # =====================================================
-    # AI INVESTIGATION
+    # REPORT
     # =====================================================
+
+    title = Column(
+        String(255),
+        nullable=False,
+    )
 
     summary = Column(
         Text,
@@ -46,16 +65,6 @@ class AIAnalysis(Base):
     risk_level = Column(
         String(20),
         nullable=False,
-    )
-
-    explanation = Column(
-        Text,
-        nullable=True,
-    )
-
-    recommendation = Column(
-        Text,
-        nullable=True,
     )
 
     # =====================================================
@@ -72,35 +81,23 @@ class AIAnalysis(Base):
         nullable=True,
     )
 
-    mitre_valid = Column(
-        Boolean,
-        default=False,
-        nullable=False,
+    # =====================================================
+    # RESPONSE
+    # =====================================================
+
+    recommendation = Column(
+        Text,
+        nullable=True,
     )
 
-    # =====================================================
-    # RAG
-    # =====================================================
-
-    rag_sources = Column(
-        JSONB,
+    response_status = Column(
+        String(50),
         nullable=True,
     )
 
     # =====================================================
     # HUMAN REVIEW
     # =====================================================
-
-    human_approval_required = Column(
-        Boolean,
-        default=False,
-        nullable=False,
-    )
-
-    human_approved = Column(
-        Boolean,
-        nullable=True,
-    )
 
     human_review_status = Column(
         String(50),
@@ -113,35 +110,16 @@ class AIAnalysis(Base):
     )
 
     # =====================================================
-    # RESPONSE
+    # RAG + AGENTS
     # =====================================================
 
-    response_status = Column(
-        String(50),
-        nullable=True,
-    )
-
-    # =====================================================
-    # LANGGRAPH
-    # =====================================================
-
-    thread_id = Column(
-        String(100),
-        nullable=True,
-        index=True,
-    )
-
-    agent_trace = Column(
+    rag_sources = Column(
         JSONB,
         nullable=True,
     )
 
-    # =====================================================
-    # MODEL
-    # =====================================================
-
-    model_used = Column(
-        String(100),
+    agent_trace = Column(
+        JSONB,
         nullable=True,
     )
 
