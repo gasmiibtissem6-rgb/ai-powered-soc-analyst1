@@ -1,5 +1,6 @@
 import json
 import re
+from typing import Optional
 
 from openai import OpenAI
 
@@ -20,27 +21,54 @@ class LLMService:
         description: str,
         severity: str,
         source: str,
+        threat_intelligence: Optional[list[dict]] = None,
     ) -> dict:
 
-        prompt = f"""
-Analyze this cybersecurity incident as a SOC analyst.
+        # Transformer Threat Intelligence en texte
+        if threat_intelligence:
+            threat_context = json.dumps(
+                threat_intelligence,
+                indent=2,
+            )
+        else:
+            threat_context = "No threat intelligence data available."
 
+        prompt = f"""
+You are an expert SOC cybersecurity analyst.
+
+Analyze the following cybersecurity incident.
+
+INCIDENT
 Title: {title}
 Description: {description}
 Severity: {severity}
 Source: {source}
+
+THREAT INTELLIGENCE
+The following information comes from AbuseIPDB:
+
+{threat_context}
+
+Important:
+Use the Threat Intelligence information when evaluating the incident.
+
+For example:
+- a high abuse score increases suspicion;
+- a known Tor IP increases suspicion;
+- a low abuse score does NOT prove that an incident is harmless;
+- distinguish the reputation of the IP from the malicious behavior observed in the incident.
 
 Return a JSON object containing exactly:
 
 {{
   "summary": "short incident summary",
   "risk_level": "low|medium|high|critical",
-  "explanation": "technical explanation",
+  "explanation": "technical explanation combining incident evidence and threat intelligence",
   "recommendation": "recommended remediation actions",
   "mitre_technique": "TXXXX - Technique Name"
 }}
 
-Return the JSON object only.
+Return only the JSON object.
 """
 
         response = self.client.chat.completions.create(
@@ -64,20 +92,21 @@ Return the JSON object only.
         content = response.choices[0].message.content
 
         if not content:
-            raise ValueError("LLM returned an empty response")
+            raise ValueError(
+                "LLM returned an empty response"
+            )
 
         content = content.strip()
 
-        # Supprimer les blocs Markdown éventuels
         content = re.sub(
             r"```json\s*",
             "",
             content,
             flags=re.IGNORECASE,
         )
+
         content = content.replace("```", "")
 
-        # Chercher tous les objets JSON possibles
         decoder = json.JSONDecoder()
 
         valid_objects = []
@@ -88,7 +117,7 @@ Return the JSON object only.
                 continue
 
             try:
-                obj, end = decoder.raw_decode(
+                obj, _ = decoder.raw_decode(
                     content[index:]
                 )
 
@@ -100,10 +129,9 @@ Return the JSON object only.
 
         if not valid_objects:
             raise ValueError(
-                f"No valid JSON object found in LLM response: {content}"
+                "No valid JSON object found in LLM response"
             )
 
-        # Chercher un objet contenant les champs attendus
         required_fields = {
             "summary",
             "risk_level",
@@ -116,16 +144,17 @@ Return the JSON object only.
 
         for obj in reversed(valid_objects):
 
-            if required_fields.issubset(obj.keys()):
+            if required_fields.issubset(
+                obj.keys()
+            ):
                 result = obj
                 break
 
         if result is None:
             raise ValueError(
-                "LLM returned JSON but required fields are missing"
+                "LLM JSON is missing required fields"
             )
 
-        # Vérifier risk_level
         allowed_risks = {
             "low",
             "medium",
@@ -139,7 +168,7 @@ Return the JSON object only.
 
         if risk not in allowed_risks:
             raise ValueError(
-                f"Invalid risk_level returned by LLM: {risk}"
+                f"Invalid risk level: {risk}"
             )
 
         result["risk_level"] = risk

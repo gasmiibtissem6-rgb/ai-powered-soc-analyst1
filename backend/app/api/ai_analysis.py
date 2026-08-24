@@ -208,11 +208,12 @@ def generate_ai_analysis(
 
     try:
         result = llm.analyze_incident(
-            title=incident.title,
-            description=incident.description,
-            severity=incident.severity,
-            source=incident.source,
-        )
+    title=incident.title,
+    description=incident.description,
+    severity=incident.severity,
+    source=incident.source,
+    threat_intelligence=threat_intelligence,
+)
 
     except Exception as exc:
         raise HTTPException(

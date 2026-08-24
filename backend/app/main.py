@@ -5,6 +5,7 @@ from app.api.alerts import router as alerts_router
 from app.api.auth import router as auth_router
 from app.api.ai_analysis import router as ai_analysis_router
 from app.api import mitre
+from app.api import agents
 app = FastAPI(
     title="AI-Powered SOC Analyst API",
     description="Backend API for the intelligent SOC platform",
@@ -13,6 +14,7 @@ app = FastAPI(
 
 
 # Routers
+app.include_router(agents.router)
 app.include_router(auth_router)
 app.include_router(alerts_router)
 app.include_router(incidents_router)
