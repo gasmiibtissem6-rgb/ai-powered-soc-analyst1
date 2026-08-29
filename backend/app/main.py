@@ -4,7 +4,7 @@ from app.api.incidents import router as incidents_router
 from app.api.alerts import router as alerts_router
 from app.api.auth import router as auth_router
 from app.api.ai_analysis import router as ai_analysis_router
-
+from app.api import ml
 from app.api import threat_intelligence
 from app.api import mitre
 from app.api import agents
@@ -21,7 +21,7 @@ app = FastAPI(
 # =========================================================
 # ROUTERS
 # =========================================================
-
+app.include_router(ml.router)
 app.include_router(auth_router)
 app.include_router(alerts_router)
 app.include_router(incidents_router)
