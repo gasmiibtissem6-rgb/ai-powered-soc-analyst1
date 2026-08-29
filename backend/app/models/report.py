@@ -68,6 +68,25 @@ class SOCReport(Base):
     )
 
     # =====================================================
+    # MACHINE LEARNING
+    # =====================================================
+
+    ml_status = Column(
+        String(50),
+        nullable=True,
+    )
+
+    ml_prediction = Column(
+        String(50),
+        nullable=True,
+    )
+
+    ml_probabilities = Column(
+        JSONB,
+        nullable=True,
+    )
+
+    # =====================================================
     # MITRE ATT&CK
     # =====================================================
 

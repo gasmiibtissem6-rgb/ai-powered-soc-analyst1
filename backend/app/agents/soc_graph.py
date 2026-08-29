@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.services.llm_service import LLMService
 from app.services.mitre_service import MitreService
 from app.services.rag_service import RAGService
+from app.services.ml_service import MLService
 from app.services.threat_intelligence_service import (
     ThreatIntelligenceService,
 )
@@ -28,6 +29,8 @@ class SOCState(TypedDict, total=False):
     incident: dict
 
     triage: dict
+
+    ml_analysis: dict
 
     threat_intelligence: list[dict]
 
@@ -87,7 +90,87 @@ def triage_agent(
 
 
 # =========================================================
-# 2. THREAT INTELLIGENCE AGENT
+# 2. MACHINE LEARNING AGENT
+# =========================================================
+
+def machine_learning_agent(
+    state: SOCState,
+) -> dict:
+
+    incident = state.get(
+        "incident",
+        {},
+    )
+
+    features = incident.get(
+        "ml_features"
+    )
+
+    # -----------------------------------------------------
+    # Aucun vecteur ML fourni
+    # -----------------------------------------------------
+
+    if (
+        not isinstance(
+            features,
+            dict,
+        )
+        or not features
+    ):
+
+        return {
+            "ml_analysis": {
+                "status": "not_available",
+                "prediction": None,
+                "reason": (
+                    "No network ML features "
+                    "provided for this incident."
+                ),
+            },
+
+            "agent_trace": [
+                "Machine Learning"
+            ],
+        }
+
+    # -----------------------------------------------------
+    # Prédiction avec Random Forest
+    # -----------------------------------------------------
+
+    try:
+
+        service = MLService()
+
+        prediction = (
+            service.predict_network_attack(
+                features
+            )
+        )
+
+        ml_analysis = {
+            "status": "success",
+            **prediction,
+        }
+
+    except Exception as exc:
+
+        ml_analysis = {
+            "status": "failed",
+            "prediction": None,
+            "error": str(exc),
+        }
+
+    return {
+        "ml_analysis": ml_analysis,
+
+        "agent_trace": [
+            "Machine Learning"
+        ],
+    }
+
+
+# =========================================================
+# 3. THREAT INTELLIGENCE AGENT
 # =========================================================
 
 def threat_intelligence_agent(
@@ -135,7 +218,7 @@ def threat_intelligence_agent(
 
 
 # =========================================================
-# 3. INVESTIGATION AGENT
+# 4. INVESTIGATION AGENT
 # =========================================================
 
 def investigation_agent(
@@ -150,6 +233,11 @@ def investigation_agent(
     threat_intelligence = state.get(
         "threat_intelligence",
         [],
+    )
+
+    ml_analysis = state.get(
+        "ml_analysis",
+        {},
     )
 
     # -----------------------------------------------------
@@ -178,6 +266,63 @@ def investigation_agent(
         )
 
         rag_context = []
+
+    # -----------------------------------------------------
+    # Ajouter le résultat ML dans le contexte
+    # -----------------------------------------------------
+
+    ml_context = []
+
+    if (
+        isinstance(
+            ml_analysis,
+            dict,
+        )
+        and ml_analysis.get(
+            "status"
+        ) == "success"
+    ):
+
+        ml_context = [
+            {
+                "source": "machine_learning",
+                "prediction": (
+                    ml_analysis.get(
+                        "prediction"
+                    )
+                ),
+                "benign_probability": (
+                    ml_analysis.get(
+                        "benign_probability"
+                    )
+                ),
+                "ddos_probability": (
+                    ml_analysis.get(
+                        "ddos_probability"
+                    )
+                ),
+                "portscan_probability": (
+                    ml_analysis.get(
+                        "portscan_probability"
+                    )
+                ),
+                "ftp_patator_probability": (
+                    ml_analysis.get(
+                        "ftp_patator_probability"
+                    )
+                ),
+                "ssh_patator_probability": (
+                    ml_analysis.get(
+                        "ssh_patator_probability"
+                    )
+                ),
+            }
+        ]
+
+    investigation_context = (
+        rag_context
+        + ml_context
+    )
 
     # -----------------------------------------------------
     # LLM ANALYSIS
@@ -210,7 +355,17 @@ def investigation_agent(
             threat_intelligence
         ),
 
-        rag_context=rag_context,
+        rag_context=(
+            investigation_context
+        ),
+    )
+
+    # -----------------------------------------------------
+    # Ajouter ML au résultat d'investigation
+    # -----------------------------------------------------
+
+    result["ml_analysis"] = (
+        ml_analysis
     )
 
     # -----------------------------------------------------
@@ -330,7 +485,7 @@ def risk_router(
 
 
 # =========================================================
-# 4. HUMAN REVIEW AGENT
+# 5. HUMAN REVIEW AGENT
 # =========================================================
 
 def human_review_agent(
@@ -468,15 +623,13 @@ def build_soar_action(
         recommendation or ""
     ).lower()
 
-    # -----------------------------------------------------
-    # 1. Déterminer le type d'action SOAR
-    # -----------------------------------------------------
-
     action_type = "create_ticket"
 
     if "isolate" in recommendation_lower:
 
-        action_type = "isolate_endpoint"
+        action_type = (
+            "isolate_endpoint"
+        )
 
     elif (
         "block" in recommendation_lower
@@ -489,7 +642,8 @@ def build_soar_action(
         "disable" in recommendation_lower
         and (
             "user" in recommendation_lower
-            or "account" in recommendation_lower
+            or "account"
+            in recommendation_lower
         )
     ):
 
@@ -497,13 +651,16 @@ def build_soar_action(
 
     elif (
         "notify" in recommendation_lower
-        or "notification" in recommendation_lower
+        or "notification"
+        in recommendation_lower
     ):
 
-        action_type = "send_notification"
+        action_type = (
+            "send_notification"
+        )
 
     # -----------------------------------------------------
-    # 2. Déterminer la cible selon le type d'action
+    # Target
     # -----------------------------------------------------
 
     if action_type == "isolate_endpoint":
@@ -540,7 +697,9 @@ def build_soar_action(
     elif action_type == "send_notification":
 
         target = (
-            incident.get("notification_target")
+            incident.get(
+                "notification_target"
+            )
             or "soc-team"
         )
 
@@ -550,12 +709,11 @@ def build_soar_action(
             incident.get("hostname")
             or incident.get("endpoint")
             or incident.get("target")
-            or f"incident-{incident.get('id', 'unknown')}"
+            or (
+                f"incident-"
+                f"{incident.get('id', 'unknown')}"
+            )
         )
-
-    # -----------------------------------------------------
-    # 3. Construire la proposition SOAR
-    # -----------------------------------------------------
 
     return {
         "incident_id": (
@@ -577,7 +735,7 @@ def build_soar_action(
 
 
 # =========================================================
-# 5. RESPONSE AGENT
+# 6. RESPONSE AGENT
 # =========================================================
 
 def response_agent(
@@ -663,10 +821,6 @@ def response_agent(
         ),
     }
 
-    # -----------------------------------------------------
-    # Construire SOAR action seulement si autorisée
-    # -----------------------------------------------------
-
     soar_action = {}
 
     if approved:
@@ -694,7 +848,7 @@ def response_agent(
 
 
 # =========================================================
-# 6. REPORT AGENT
+# 7. REPORT AGENT
 # =========================================================
 
 def report_agent(
@@ -708,6 +862,11 @@ def report_agent(
 
     investigation = state.get(
         "investigation",
+        {},
+    )
+
+    ml_analysis = state.get(
+        "ml_analysis",
         {},
     )
 
@@ -731,10 +890,6 @@ def report_agent(
         {},
     )
 
-    # -----------------------------------------------------
-    # RAG SOURCES
-    # -----------------------------------------------------
-
     rag_context = state.get(
         "rag_context",
         [],
@@ -748,10 +903,6 @@ def report_agent(
             and item.get("source")
         )
     ]
-
-    # -----------------------------------------------------
-    # REPORT
-    # -----------------------------------------------------
 
     report = {
         "incident_id": (
@@ -777,6 +928,58 @@ def report_agent(
                 "risk_level"
             )
         ),
+
+        # -------------------------------------------------
+        # MACHINE LEARNING
+        # -------------------------------------------------
+
+        "ml_status": (
+            ml_analysis.get(
+                "status"
+            )
+        ),
+
+        "ml_prediction": (
+            ml_analysis.get(
+                "prediction"
+            )
+        ),
+
+        "ml_probabilities": {
+            "BENIGN": (
+                ml_analysis.get(
+                    "benign_probability"
+                )
+            ),
+
+            "DDoS": (
+                ml_analysis.get(
+                    "ddos_probability"
+                )
+            ),
+
+            "PortScan": (
+                ml_analysis.get(
+                    "portscan_probability"
+                )
+            ),
+
+            "FTP-Patator": (
+                ml_analysis.get(
+                    "ftp_patator_probability"
+                )
+            ),
+
+            "SSH-Patator": (
+                ml_analysis.get(
+                    "ssh_patator_probability"
+                )
+            ),
+        },
+
+        # -------------------------------------------------
+        # MITRE
+        # -------------------------------------------------
 
         "mitre_technique": (
             mitre_validation.get(
@@ -866,6 +1069,11 @@ builder.add_node(
 )
 
 builder.add_node(
+    "machine_learning",
+    machine_learning_agent,
+)
+
+builder.add_node(
     "threat_intelligence",
     threat_intelligence_agent,
 )
@@ -902,6 +1110,11 @@ builder.add_edge(
 
 builder.add_edge(
     "triage",
+    "machine_learning",
+)
+
+builder.add_edge(
+    "machine_learning",
     "threat_intelligence",
 )
 
@@ -983,7 +1196,7 @@ checkpointer = PostgresSaver(
 )
 
 
-# Crée les tables LangGraph si nécessaire.
+# Crée les tables LangGraph si nécessaire
 checkpointer.setup()
 
 

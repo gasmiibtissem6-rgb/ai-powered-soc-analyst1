@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Dict, Optional
 from uuid import uuid4
 
 from fastapi import (
@@ -39,6 +39,10 @@ router = APIRouter(
 class HumanDecision(BaseModel):
     approved: bool
     comment: Optional[str] = None
+
+
+class AnalyzeIncidentRequest(BaseModel):
+    ml_features: Optional[Dict[str, float]] = None
 
 
 # =========================================================
@@ -84,6 +88,10 @@ def save_ai_analysis(
         result.get("investigation")
         or {}
     )
+    ml_analysis = (
+    result.get("ml_analysis")
+    or {}
+)
 
     mitre_validation = (
         result.get("mitre_validation")
@@ -318,6 +326,10 @@ def save_soc_report(
         or {}
     )
 
+    ml_analysis = (
+    result.get("ml_analysis")
+    or {}
+)
     mitre_validation = (
         result.get("mitre_validation")
         or {}
@@ -398,6 +410,31 @@ def save_soc_report(
             ),
         ),
 
+        ml_status=ml_analysis.get(
+    "status"
+),
+
+ml_prediction=ml_analysis.get(
+    "prediction"
+),
+
+ml_probabilities={
+    "BENIGN": ml_analysis.get(
+        "benign_probability"
+    ),
+    "DDoS": ml_analysis.get(
+        "ddos_probability"
+    ),
+    "PortScan": ml_analysis.get(
+        "portscan_probability"
+    ),
+    "FTP-Patator": ml_analysis.get(
+        "ftp_patator_probability"
+    ),
+    "SSH-Patator": ml_analysis.get(
+        "ssh_patator_probability"
+    ),
+},
         mitre_technique=report.get(
             "mitre_technique",
             mitre_validation.get(
@@ -631,6 +668,7 @@ def save_soar_action(
 @router.post("/analyze/{incident_id}")
 def analyze_incident_with_agents(
     incident_id: int,
+    request: Optional[AnalyzeIncidentRequest] = None,
     db: Session = Depends(get_db),
 ):
 
@@ -670,7 +708,7 @@ def analyze_incident_with_agents(
     # 3. Etat initial
     # -----------------------------------------------------
 
-    initial_state = {
+    iinitial_state = {
     "incident": {
         "id": incident.id,
         "title": incident.title,
@@ -685,8 +723,48 @@ def analyze_incident_with_agents(
         "source_ip": incident.source_ip,
         "destination_ip": incident.destination_ip,
         "username": incident.username,
+
+        # Machine Learning network features
+        "ml_features": (
+            request.ml_features
+            if request
+            else None
+        ),
     }
 }
+       # -----------------------------------------------------
+    # 3. Etat initial du workflow
+    # -----------------------------------------------------
+
+    
+        # -----------------------------------------------------
+    # 3. Etat initial du workflow
+    # -----------------------------------------------------
+
+    initial_state = {
+        "incident": {
+            "id": incident.id,
+            "title": incident.title,
+            "description": incident.description,
+            "severity": incident.severity,
+            "status": incident.status,
+            "source": incident.source,
+            "assigned_to": incident.assigned_to,
+
+            # Technical fields
+            "hostname": incident.hostname,
+            "source_ip": incident.source_ip,
+            "destination_ip": incident.destination_ip,
+            "username": incident.username,
+
+            # Machine Learning features
+            "ml_features": (
+                request.ml_features
+                if request
+                else None
+            ),
+        }
+    }
 
     # -----------------------------------------------------
     # 4. Lancer LangGraph
@@ -708,6 +786,10 @@ def analyze_incident_with_agents(
                 f"{str(exc)}"
             ),
         )
+    
+
+
+
 
     # -----------------------------------------------------
     # 5. Vérifier interruption
@@ -743,6 +825,10 @@ def analyze_incident_with_agents(
             "triage": result.get(
                 "triage"
             ),
+
+            "ml_analysis": result.get(
+    "ml_analysis"
+),
 
             "threat_intelligence": result.get(
                 "threat_intelligence"
