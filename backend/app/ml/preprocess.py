@@ -65,23 +65,28 @@ def prepare_dataset(path, allowed_labels, max_per_class=15000):
 def load_and_preprocess_data():
     print("Loading datasets with memory optimization...\n")
 
-    # Dataset DDoS
+    # =====================================================
+    # 1. Charger les datasets
+    # =====================================================
+
     ddos_df = prepare_dataset(
         DDOS_DATASET_PATH,
         ["BENIGN", "DDoS"],
     )
 
-    # Dataset PortScan
     portscan_df = prepare_dataset(
         PORTSCAN_DATASET_PATH,
         ["BENIGN", "PortScan"],
     )
 
-    # Dataset Tuesday
     tuesday_df = prepare_dataset(
         TUESDAY_DATASET_PATH,
         ["BENIGN", "FTP-Patator", "SSH-Patator"],
     )
+
+    # =====================================================
+    # 2. Fusionner les datasets
+    # =====================================================
 
     print("\nCombining datasets...")
 
@@ -98,28 +103,88 @@ def load_and_preprocess_data():
     del portscan_df
     del tuesday_df
 
-    # Remplacer infini par NaN
+    print("Combined shape:", df.shape)
+
+    # =====================================================
+    # 3. Nettoyer les valeurs invalides
+    # =====================================================
+
     df.replace(
         [np.inf, -np.inf],
         np.nan,
         inplace=True,
     )
 
-    # Supprimer les lignes invalides
+    before_invalid = len(df)
+
     df.dropna(inplace=True)
 
-    # Convertir les labels
+    after_invalid = len(df)
+
+    print(
+        f"Invalid rows removed: "
+        f"{before_invalid - after_invalid}"
+    )
+
+    # =====================================================
+    # 4. Supprimer les doublons
+    # IMPORTANT : avant le train/test split
+    # =====================================================
+
+    print("\nRemoving duplicate rows...")
+
+    before_duplicates = len(df)
+
+    df = df.drop_duplicates().reset_index(drop=True)
+
+    after_duplicates = len(df)
+
+    print(
+        f"Rows before duplicate removal: "
+        f"{before_duplicates}"
+    )
+
+    print(
+        f"Rows after duplicate removal : "
+        f"{after_duplicates}"
+    )
+
+    print(
+        f"Duplicates removed           : "
+        f"{before_duplicates - after_duplicates}"
+    )
+
+    # =====================================================
+    # 5. Convertir les labels
+    # =====================================================
+
     df["Label"] = df["Label"].map(LABEL_MAPPING)
 
-    # Mélanger les données
+    # Vérification de sécurité
+    if df["Label"].isna().any():
+        raise ValueError(
+            "Unknown labels detected after label mapping."
+        )
+
+    # =====================================================
+    # 6. Mélanger les données
+    # =====================================================
+
     df = df.sample(
         frac=1,
         random_state=42,
     ).reset_index(drop=True)
 
-    # Features / Target
+    # =====================================================
+    # 7. Séparer Features / Target
+    # =====================================================
+
     X = df.drop(columns=["Label"])
     y = df["Label"]
+
+    # =====================================================
+    # 8. Afficher les informations finales
+    # =====================================================
 
     print("\n========== DATASET READY ==========")
 
@@ -127,6 +192,7 @@ def load_and_preprocess_data():
     print(y.value_counts().sort_index())
 
     print("\nLabel mapping:")
+
     for label, number in LABEL_MAPPING.items():
         print(f"{number} = {label}")
 
