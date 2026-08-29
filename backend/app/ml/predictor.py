@@ -4,20 +4,24 @@ import pandas as pd
 
 MODEL_PATH = "app/ml/models/network_attack_random_forest.joblib"
 
+# Charger le modèle entraîné
 model = joblib.load(MODEL_PATH)
 
 
+# Mapping des classes du modèle
 LABEL_MAPPING = {
     0: "BENIGN",
     1: "DDoS",
     2: "PortScan",
+    3: "FTP-Patator",
+    4: "SSH-Patator",
 }
 
 
 def predict_traffic(features):
     """
     Predict network traffic class:
-    BENIGN, DDoS or PortScan.
+    BENIGN, DDoS, PortScan, FTP-Patator or SSH-Patator.
     """
 
     # Transformer le dictionnaire reçu en DataFrame
@@ -27,10 +31,10 @@ def predict_traffic(features):
     # Faire la prédiction
     prediction = model.predict(features)[0]
 
-    # Probabilités pour les 3 classes
+    # Récupérer les probabilités pour les 5 classes
     probabilities = model.predict_proba(features)[0]
 
-    # Transformer 0/1/2 en nom de classe
+    # Transformer le numéro de classe en nom
     prediction_label = LABEL_MAPPING[int(prediction)]
 
     result = {
@@ -38,6 +42,8 @@ def predict_traffic(features):
         "benign_probability": float(probabilities[0]),
         "ddos_probability": float(probabilities[1]),
         "portscan_probability": float(probabilities[2]),
+        "ftp_patator_probability": float(probabilities[3]),
+        "ssh_patator_probability": float(probabilities[4]),
     }
 
     return result

@@ -1,5 +1,6 @@
+import joblib
+
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
@@ -10,15 +11,14 @@ from sklearn.metrics import (
 )
 from sklearn.preprocessing import label_binarize
 
-import joblib
-import os
-
 from app.ml.preprocess import load_and_preprocess_data
 
 
-CLASSES = [0, 1, 2, 3, 4]
+MODEL_PATH = "app/ml/models/network_attack_random_forest.joblib"
 
-CLASS_NAMES = [
+LABELS = [0, 1, 2, 3, 4]
+
+TARGET_NAMES = [
     "BENIGN",
     "DDoS",
     "PortScan",
@@ -27,12 +27,13 @@ CLASS_NAMES = [
 ]
 
 
-def train_model():
-    # 1. Charger et nettoyer les données
+def evaluate_model():
+    print("Loading data...")
+
     X, y = load_and_preprocess_data()
 
-    # 2. Séparer les données en train / test
-    X_train, X_test, y_train, y_test = train_test_split(
+    # Recréer le même découpage train/test
+    _, X_test, _, y_test = train_test_split(
         X,
         y,
         test_size=0.20,
@@ -40,31 +41,16 @@ def train_model():
         stratify=y,
     )
 
-    print("\nTraining samples:", len(X_train))
-    print("Testing samples:", len(X_test))
+    print("\nLoading trained model...")
 
-    # 3. Créer le modèle Random Forest
-    model = RandomForestClassifier(
-        n_estimators=100,
-        random_state=42,
-        n_jobs=-1,
-        class_weight="balanced",
-    )
+    model = joblib.load(MODEL_PATH)
 
-    # 4. Entraîner le modèle
-    print("\nTraining Random Forest...")
+    print("Running predictions...")
 
-    model.fit(X_train, y_train)
-
-    print("Training completed.")
-
-    # 5. Faire les prédictions
     y_pred = model.predict(X_test)
-
-    # Probabilités pour chaque classe
     y_proba = model.predict_proba(X_test)
 
-    # 6. Calculer les métriques
+    # Métriques globales
     accuracy = accuracy_score(
         y_test,
         y_pred,
@@ -91,10 +77,10 @@ def train_model():
         zero_division=0,
     )
 
-    # ROC-AUC multi-classe
+    # ROC-AUC multiclasses
     y_test_bin = label_binarize(
         y_test,
-        classes=CLASSES,
+        classes=LABELS,
     )
 
     roc_auc = roc_auc_score(
@@ -104,8 +90,7 @@ def train_model():
         average="weighted",
     )
 
-    # 7. Afficher les résultats
-    print("\n========== MODEL RESULTS ==========")
+    print("\n========== FINAL MODEL EVALUATION ==========")
 
     print(f"Accuracy  : {accuracy:.4f}")
     print(f"Precision : {precision:.4f}")
@@ -113,40 +98,18 @@ def train_model():
     print(f"F1 Score  : {f1:.4f}")
     print(f"ROC-AUC   : {roc_auc:.4f}")
 
-    print("\nClassification Report:")
+    print("\n========== CLASSIFICATION REPORT ==========")
 
     print(
         classification_report(
             y_test,
             y_pred,
-            labels=CLASSES,
-            target_names=CLASS_NAMES,
+            labels=LABELS,
+            target_names=TARGET_NAMES,
             zero_division=0,
         )
     )
 
-    # 8. Sauvegarder le modèle
-    model_dir = "app/ml/models"
-
-    os.makedirs(
-        model_dir,
-        exist_ok=True,
-    )
-
-    model_path = os.path.join(
-        model_dir,
-        "network_attack_random_forest.joblib",
-    )
-
-    joblib.dump(
-        model,
-        model_path,
-    )
-
-    print(
-        f"\nModel saved to: {model_path}"
-    )
-
 
 if __name__ == "__main__":
-    train_model()
+    evaluate_model()

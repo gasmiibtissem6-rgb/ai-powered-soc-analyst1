@@ -19,7 +19,8 @@ class TrafficPredictionRequest(BaseModel):
 @router.post("/predict")
 def predict_network_traffic(request: TrafficPredictionRequest):
     """
-    Predict network traffic as BENIGN, DDoS or PortScan.
+    Predict network traffic as:
+    BENIGN, DDoS, PortScan, FTP-Patator or SSH-Patator.
     """
 
     try:
@@ -31,6 +32,8 @@ def predict_network_traffic(request: TrafficPredictionRequest):
             "benign_probability": result["benign_probability"],
             "ddos_probability": result["ddos_probability"],
             "portscan_probability": result["portscan_probability"],
+            "ftp_patator_probability": result["ftp_patator_probability"],
+            "ssh_patator_probability": result["ssh_patator_probability"],
         }
 
     except Exception as e:
