@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-
+from app.api import wazuh
 from app.api.incidents import router as incidents_router
 from app.api.alerts import router as alerts_router
 from app.api.auth import router as auth_router
@@ -30,7 +30,7 @@ app.include_router(soar.router)
 app.include_router(threat_intelligence.router)
 app.include_router(mitre.router)
 app.include_router(agents.router)
-
+app.include_router(wazuh.router)
 # SOC Reports
 app.include_router(reports.router)
 

@@ -7,7 +7,6 @@ from fastapi import (
     HTTPException,
     status,
 )
-
 from langgraph.types import Command
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -33,7 +32,7 @@ router = APIRouter(
 
 
 # =========================================================
-# HUMAN DECISION SCHEMA
+# REQUEST SCHEMAS
 # =========================================================
 
 class HumanDecision(BaseModel):
@@ -56,7 +55,7 @@ def save_ai_analysis(
 ) -> AIAnalysis:
 
     # -----------------------------------------------------
-    # 1. Eviter les doublons
+    # 1. Avoid duplicates
     # -----------------------------------------------------
 
     existing_analysis = (
@@ -71,7 +70,7 @@ def save_ai_analysis(
         return existing_analysis
 
     # -----------------------------------------------------
-    # 2. Extraire les données du workflow
+    # 2. Workflow data
     # -----------------------------------------------------
 
     incident = (
@@ -88,10 +87,6 @@ def save_ai_analysis(
         result.get("investigation")
         or {}
     )
-    ml_analysis = (
-    result.get("ml_analysis")
-    or {}
-)
 
     mitre_validation = (
         result.get("mitre_validation")
@@ -124,7 +119,7 @@ def save_ai_analysis(
     )
 
     # -----------------------------------------------------
-    # 3. Sources RAG
+    # 3. RAG sources
     # -----------------------------------------------------
 
     rag_sources = [
@@ -194,7 +189,7 @@ def save_ai_analysis(
         )
 
     # -----------------------------------------------------
-    # 7. Construire AIAnalysis
+    # 7. Create AIAnalysis
     # -----------------------------------------------------
 
     db_analysis = AIAnalysis(
@@ -230,7 +225,6 @@ def save_ai_analysis(
             False,
         ),
 
-        # JSONB
         rag_sources=rag_sources,
 
         human_approval_required=(
@@ -255,14 +249,13 @@ def save_ai_analysis(
 
         thread_id=thread_id,
 
-        # JSONB
         agent_trace=agent_trace,
 
         model_used=settings.LLM_MODEL,
     )
 
     # -----------------------------------------------------
-    # 8. Sauvegarder
+    # 8. Save
     # -----------------------------------------------------
 
     try:
@@ -298,7 +291,7 @@ def save_soc_report(
 ) -> SOCReport:
 
     # -----------------------------------------------------
-    # 1. Eviter les doublons
+    # 1. Avoid duplicates
     # -----------------------------------------------------
 
     existing_report = (
@@ -313,7 +306,7 @@ def save_soc_report(
         return existing_report
 
     # -----------------------------------------------------
-    # 2. Extraire les données
+    # 2. Workflow data
     # -----------------------------------------------------
 
     incident = (
@@ -327,9 +320,10 @@ def save_soc_report(
     )
 
     ml_analysis = (
-    result.get("ml_analysis")
-    or {}
-)
+        result.get("ml_analysis")
+        or {}
+    )
+
     mitre_validation = (
         result.get("mitre_validation")
         or {}
@@ -361,7 +355,7 @@ def save_soc_report(
     )
 
     # -----------------------------------------------------
-    # 3. Sources RAG
+    # 3. RAG sources
     # -----------------------------------------------------
 
     rag_sources = [
@@ -374,7 +368,29 @@ def save_soc_report(
     ]
 
     # -----------------------------------------------------
-    # 4. Construire SOCReport
+    # 4. ML probabilities
+    # -----------------------------------------------------
+
+    ml_probabilities = {
+        "BENIGN": ml_analysis.get(
+            "benign_probability"
+        ),
+        "DDoS": ml_analysis.get(
+            "ddos_probability"
+        ),
+        "PortScan": ml_analysis.get(
+            "portscan_probability"
+        ),
+        "FTP-Patator": ml_analysis.get(
+            "ftp_patator_probability"
+        ),
+        "SSH-Patator": ml_analysis.get(
+            "ssh_patator_probability"
+        ),
+    }
+
+    # -----------------------------------------------------
+    # 5. Create SOC Report
     # -----------------------------------------------------
 
     db_report = SOCReport(
@@ -411,30 +427,15 @@ def save_soc_report(
         ),
 
         ml_status=ml_analysis.get(
-    "status"
-),
+            "status"
+        ),
 
-ml_prediction=ml_analysis.get(
-    "prediction"
-),
+        ml_prediction=ml_analysis.get(
+            "prediction"
+        ),
 
-ml_probabilities={
-    "BENIGN": ml_analysis.get(
-        "benign_probability"
-    ),
-    "DDoS": ml_analysis.get(
-        "ddos_probability"
-    ),
-    "PortScan": ml_analysis.get(
-        "portscan_probability"
-    ),
-    "FTP-Patator": ml_analysis.get(
-        "ftp_patator_probability"
-    ),
-    "SSH-Patator": ml_analysis.get(
-        "ssh_patator_probability"
-    ),
-},
+        ml_probabilities=ml_probabilities,
+
         mitre_technique=report.get(
             "mitre_technique",
             mitre_validation.get(
@@ -478,15 +479,13 @@ ml_probabilities={
             ),
         ),
 
-        # JSONB
         rag_sources=rag_sources,
 
-        # JSONB
         agent_trace=agent_trace,
     )
 
     # -----------------------------------------------------
-    # 5. Sauvegarder
+    # 6. Save
     # -----------------------------------------------------
 
     try:
@@ -520,7 +519,7 @@ def save_soar_action(
 ) -> Optional[SOARAction]:
 
     # -----------------------------------------------------
-    # 1. Lire la proposition SOAR créée par LangGraph
+    # 1. Read SOAR proposal
     # -----------------------------------------------------
 
     soar_data = (
@@ -551,7 +550,7 @@ def save_soar_action(
         return None
 
     # -----------------------------------------------------
-    # 2. Lire la décision humaine
+    # 2. Human review
     # -----------------------------------------------------
 
     human_review = (
@@ -566,8 +565,6 @@ def save_soar_action(
         )
     )
 
-    # Si le workflow a demandé une validation humaine,
-    # on récupère directement la décision déjà donnée.
     if human_review_required:
 
         approved = (
@@ -581,13 +578,11 @@ def save_soar_action(
 
     else:
 
-        # Pour les incidents non critiques,
-        # aucune validation supplémentaire n'est nécessaire.
         approved = True
         requires_approval = False
 
     # -----------------------------------------------------
-    # 3. Déterminer le status initial
+    # 3. Status
     # -----------------------------------------------------
 
     if approved:
@@ -596,15 +591,20 @@ def save_soar_action(
         action_status = "pending"
 
     # -----------------------------------------------------
-    # 4. Eviter les doublons
+    # 4. Avoid duplicates
     # -----------------------------------------------------
 
     existing_action = (
         db.query(SOARAction)
         .filter(
-            SOARAction.incident_id == incident_id,
-            SOARAction.action_type == action_type,
-            SOARAction.target == target,
+            SOARAction.incident_id
+            == incident_id,
+
+            SOARAction.action_type
+            == action_type,
+
+            SOARAction.target
+            == target,
         )
         .first()
     )
@@ -613,7 +613,7 @@ def save_soar_action(
         return existing_action
 
     # -----------------------------------------------------
-    # 5. Construire l'action SOAR
+    # 5. Create action
     # -----------------------------------------------------
 
     db_action = SOARAction(
@@ -637,7 +637,7 @@ def save_soar_action(
     )
 
     # -----------------------------------------------------
-    # 6. Sauvegarder
+    # 6. Save
     # -----------------------------------------------------
 
     try:
@@ -662,86 +662,18 @@ def save_soar_action(
 
 
 # =========================================================
-# START SOC WORKFLOW
+# BUILD INITIAL SOC STATE
 # =========================================================
 
-@router.post("/analyze/{incident_id}")
-def analyze_incident_with_agents(
-    incident_id: int,
+def build_initial_state(
+    incident: Incident,
     request: Optional[AnalyzeIncidentRequest] = None,
-    db: Session = Depends(get_db),
-):
+) -> dict:
+    """
+    Build the initial LangGraph state from an Incident.
+    """
 
-    # -----------------------------------------------------
-    # 1. Charger l'incident
-    # -----------------------------------------------------
-
-    incident = (
-        db.query(Incident)
-        .filter(
-            Incident.id == incident_id
-        )
-        .first()
-    )
-
-    if not incident:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Incident not found",
-        )
-
-    # -----------------------------------------------------
-    # 2. Créer un thread LangGraph
-    # -----------------------------------------------------
-
-    thread_id = str(
-        uuid4()
-    )
-
-    config = {
-        "configurable": {
-            "thread_id": thread_id,
-        }
-    }
-
-    # -----------------------------------------------------
-    # 3. Etat initial
-    # -----------------------------------------------------
-
-    iinitial_state = {
-    "incident": {
-        "id": incident.id,
-        "title": incident.title,
-        "description": incident.description,
-        "severity": incident.severity,
-        "status": incident.status,
-        "source": incident.source,
-        "assigned_to": incident.assigned_to,
-
-        # Technical fields
-        "hostname": incident.hostname,
-        "source_ip": incident.source_ip,
-        "destination_ip": incident.destination_ip,
-        "username": incident.username,
-
-        # Machine Learning network features
-        "ml_features": (
-            request.ml_features
-            if request
-            else None
-        ),
-    }
-}
-       # -----------------------------------------------------
-    # 3. Etat initial du workflow
-    # -----------------------------------------------------
-
-    
-        # -----------------------------------------------------
-    # 3. Etat initial du workflow
-    # -----------------------------------------------------
-
-    initial_state = {
+    return {
         "incident": {
             "id": incident.id,
             "title": incident.title,
@@ -754,7 +686,9 @@ def analyze_incident_with_agents(
             # Technical fields
             "hostname": incident.hostname,
             "source_ip": incident.source_ip,
-            "destination_ip": incident.destination_ip,
+            "destination_ip": (
+                incident.destination_ip
+            ),
             "username": incident.username,
 
             # Machine Learning features
@@ -766,114 +700,78 @@ def analyze_incident_with_agents(
         }
     }
 
-    # -----------------------------------------------------
-    # 4. Lancer LangGraph
-    # -----------------------------------------------------
 
-    try:
-        result = soc_graph.invoke(
-            initial_state,
-            config=config,
-        )
+# =========================================================
+# FORMAT WAITING RESPONSE
+# =========================================================
 
-    except Exception as exc:
-        raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
-            detail=(
-                "SOC agents workflow failed: "
-                f"{str(exc)}"
-            ),
-        )
-    
-
-
-
-
-    # -----------------------------------------------------
-    # 5. Vérifier interruption
-    # -----------------------------------------------------
+def build_waiting_response(
+    result: dict,
+    thread_id: str,
+) -> dict:
 
     interrupts = result.get(
         "__interrupt__",
         [],
     )
 
-    # =====================================================
-    # HUMAN APPROVAL REQUIRED
-    # =====================================================
+    return {
+        "status": "waiting_for_human",
 
-    if interrupts:
+        "thread_id": thread_id,
 
-        interrupt_values = [
+        "interrupt": [
             item.value
             for item in interrupts
-        ]
+        ],
 
-        return {
-            "status": "waiting_for_human",
+        "incident": result.get(
+            "incident"
+        ),
 
-            "thread_id": thread_id,
+        "triage": result.get(
+            "triage"
+        ),
 
-            "interrupt": interrupt_values,
+        "ml_analysis": result.get(
+            "ml_analysis"
+        ),
 
-            "incident": result.get(
-                "incident"
-            ),
+        "threat_intelligence": result.get(
+            "threat_intelligence"
+        ),
 
-            "triage": result.get(
-                "triage"
-            ),
+        "rag_context": result.get(
+            "rag_context",
+            [],
+        ),
 
-            "ml_analysis": result.get(
-    "ml_analysis"
-),
+        "investigation": result.get(
+            "investigation"
+        ),
 
-            "threat_intelligence": result.get(
-                "threat_intelligence"
-            ),
+        "mitre_validation": result.get(
+            "mitre_validation"
+        ),
 
-            "rag_context": result.get(
-                "rag_context",
-                [],
-            ),
+        "agent_trace": result.get(
+            "agent_trace",
+            [],
+        ),
+    }
 
-            "investigation": result.get(
-                "investigation"
-            ),
 
-            "mitre_validation": result.get(
-                "mitre_validation"
-            ),
+# =========================================================
+# FORMAT COMPLETED RESPONSE
+# =========================================================
 
-            "agent_trace": result.get(
-                "agent_trace",
-                [],
-            ),
-        }
-
-    # =====================================================
-    # NO HUMAN APPROVAL REQUIRED
-    # =====================================================
-
-    db_analysis = save_ai_analysis(
-        db=db,
-        result=result,
-        thread_id=thread_id,
-    )
-
-    db_report = save_soc_report(
-        db=db,
-        result=result,
-        thread_id=thread_id,
-        ai_analysis_id=db_analysis.id,
-    )
-
-    db_soar_action = save_soar_action(
-        db=db,
-        result=result,
-    )
+def build_completed_response(
+    result: dict,
+    thread_id: str,
+    db_analysis: AIAnalysis,
+    db_report: SOCReport,
+    db_soar_action: Optional[SOARAction],
+) -> dict:
 
     return {
         "status": "completed",
@@ -900,6 +798,10 @@ def analyze_incident_with_agents(
 
         "triage": result.get(
             "triage"
+        ),
+
+        "ml_analysis": result.get(
+            "ml_analysis"
         ),
 
         "threat_intelligence": result.get(
@@ -940,6 +842,155 @@ def analyze_incident_with_agents(
             [],
         ),
     }
+
+
+# =========================================================
+# START SOC WORKFLOW SERVICE
+# =========================================================
+
+def run_soc_workflow(
+    db: Session,
+    incident: Incident,
+    request: Optional[AnalyzeIncidentRequest] = None,
+) -> dict:
+    """
+    Start the SOC LangGraph workflow.
+
+    This function is reusable from:
+    - /agents/analyze/{incident_id}
+    - Wazuh ingestion API
+    """
+
+    # -----------------------------------------------------
+    # 1. Create LangGraph thread
+    # -----------------------------------------------------
+
+    thread_id = str(
+        uuid4()
+    )
+
+    config = {
+        "configurable": {
+            "thread_id": thread_id,
+        }
+    }
+
+    # -----------------------------------------------------
+    # 2. Initial state
+    # -----------------------------------------------------
+
+    initial_state = build_initial_state(
+        incident=incident,
+        request=request,
+    )
+
+    # -----------------------------------------------------
+    # 3. Run LangGraph
+    # -----------------------------------------------------
+
+    try:
+        result = soc_graph.invoke(
+            initial_state,
+            config=config,
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail=(
+                "SOC agents workflow failed: "
+                f"{str(exc)}"
+            ),
+        )
+
+    # -----------------------------------------------------
+    # 4. Human interruption
+    # -----------------------------------------------------
+
+    interrupts = result.get(
+        "__interrupt__",
+        [],
+    )
+
+    if interrupts:
+        return build_waiting_response(
+            result=result,
+            thread_id=thread_id,
+        )
+
+    # -----------------------------------------------------
+    # 5. Save completed workflow
+    # -----------------------------------------------------
+
+    db_analysis = save_ai_analysis(
+        db=db,
+        result=result,
+        thread_id=thread_id,
+    )
+
+    db_report = save_soc_report(
+        db=db,
+        result=result,
+        thread_id=thread_id,
+        ai_analysis_id=db_analysis.id,
+    )
+
+    db_soar_action = save_soar_action(
+        db=db,
+        result=result,
+    )
+
+    return build_completed_response(
+        result=result,
+        thread_id=thread_id,
+        db_analysis=db_analysis,
+        db_report=db_report,
+        db_soar_action=db_soar_action,
+    )
+
+
+# =========================================================
+# START SOC WORKFLOW ENDPOINT
+# =========================================================
+
+@router.post("/analyze/{incident_id}")
+def analyze_incident_with_agents(
+    incident_id: int,
+    request: Optional[AnalyzeIncidentRequest] = None,
+    db: Session = Depends(get_db),
+):
+
+    # -----------------------------------------------------
+    # 1. Load incident
+    # -----------------------------------------------------
+
+    incident = (
+        db.query(Incident)
+        .filter(
+            Incident.id == incident_id
+        )
+        .first()
+    )
+
+    if not incident:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_404_NOT_FOUND
+            ),
+            detail="Incident not found",
+        )
+
+    # -----------------------------------------------------
+    # 2. Run reusable workflow service
+    # -----------------------------------------------------
+
+    return run_soc_workflow(
+        db=db,
+        incident=incident,
+        request=request,
+    )
 
 
 # =========================================================
@@ -960,7 +1011,7 @@ def resume_soc_workflow(
     }
 
     # -----------------------------------------------------
-    # 1. Lire le checkpoint
+    # 1. Read checkpoint
     # -----------------------------------------------------
 
     try:
@@ -980,12 +1031,14 @@ def resume_soc_workflow(
         )
 
     # -----------------------------------------------------
-    # 2. Vérifier que le workflow existe
+    # 2. Check workflow exists
     # -----------------------------------------------------
 
     if not snapshot.values:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=(
+                status.HTTP_404_NOT_FOUND
+            ),
             detail=(
                 "Workflow not found. "
                 "The checkpoint may have been lost. "
@@ -994,7 +1047,7 @@ def resume_soc_workflow(
         )
 
     # -----------------------------------------------------
-    # 3. Vérifier l'incident
+    # 3. Check incident
     # -----------------------------------------------------
 
     incident_state = snapshot.values.get(
@@ -1003,7 +1056,9 @@ def resume_soc_workflow(
 
     if not incident_state:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+            status_code=(
+                status.HTTP_409_CONFLICT
+            ),
             detail=(
                 "Workflow state is incomplete: "
                 "incident data is missing."
@@ -1011,7 +1066,7 @@ def resume_soc_workflow(
         )
 
     # -----------------------------------------------------
-    # 4. Vérifier investigation
+    # 4. Check investigation
     # -----------------------------------------------------
 
     investigation_state = snapshot.values.get(
@@ -1020,7 +1075,9 @@ def resume_soc_workflow(
 
     if not investigation_state:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+            status_code=(
+                status.HTTP_409_CONFLICT
+            ),
             detail=(
                 "Workflow state is incomplete: "
                 "investigation data is missing."
@@ -1028,12 +1085,14 @@ def resume_soc_workflow(
         )
 
     # -----------------------------------------------------
-    # 5. Vérifier que le workflow attend une décision
+    # 5. Check waiting state
     # -----------------------------------------------------
 
     if not snapshot.next:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+            status_code=(
+                status.HTTP_409_CONFLICT
+            ),
             detail=(
                 "This workflow is not waiting "
                 "for human approval."
@@ -1041,7 +1100,7 @@ def resume_soc_workflow(
         )
 
     # -----------------------------------------------------
-    # 6. Reprendre LangGraph
+    # 6. Resume LangGraph
     # -----------------------------------------------------
 
     try:
@@ -1051,7 +1110,6 @@ def resume_soc_workflow(
                     "approved": (
                         decision.approved
                     ),
-
                     "comment": (
                         decision.comment
                     ),
@@ -1072,7 +1130,7 @@ def resume_soc_workflow(
         )
 
     # -----------------------------------------------------
-    # 7. Vérifier nouvelle interruption
+    # 7. Check another interruption
     # -----------------------------------------------------
 
     remaining_interrupts = result.get(
@@ -1081,50 +1139,13 @@ def resume_soc_workflow(
     )
 
     if remaining_interrupts:
-
-        return {
-            "status": "waiting_for_human",
-
-            "thread_id": thread_id,
-
-            "interrupt": [
-                item.value
-                for item in remaining_interrupts
-            ],
-
-            "incident": result.get(
-                "incident"
-            ),
-
-            "triage": result.get(
-                "triage"
-            ),
-
-            "threat_intelligence": result.get(
-                "threat_intelligence"
-            ),
-
-            "rag_context": result.get(
-                "rag_context",
-                [],
-            ),
-
-            "investigation": result.get(
-                "investigation"
-            ),
-
-            "mitre_validation": result.get(
-                "mitre_validation"
-            ),
-
-            "agent_trace": result.get(
-                "agent_trace",
-                [],
-            ),
-        }
+        return build_waiting_response(
+            result=result,
+            thread_id=thread_id,
+        )
 
     # -----------------------------------------------------
-    # 8. Sauvegarder AI Analysis
+    # 8. Save AI Analysis
     # -----------------------------------------------------
 
     db_analysis = save_ai_analysis(
@@ -1134,7 +1155,7 @@ def resume_soc_workflow(
     )
 
     # -----------------------------------------------------
-    # 9. Sauvegarder SOC Report
+    # 9. Save SOC Report
     # -----------------------------------------------------
 
     db_report = save_soc_report(
@@ -1145,7 +1166,7 @@ def resume_soc_workflow(
     )
 
     # -----------------------------------------------------
-    # 10. Sauvegarder SOAR Action
+    # 10. Save SOAR Action
     # -----------------------------------------------------
 
     db_soar_action = save_soar_action(
@@ -1154,71 +1175,13 @@ def resume_soc_workflow(
     )
 
     # -----------------------------------------------------
-    # 11. Résultat final
+    # 11. Final response
     # -----------------------------------------------------
 
-    return {
-        "status": "completed",
-
-        "thread_id": thread_id,
-
-        "ai_analysis_id": (
-            db_analysis.id
-        ),
-
-        "soc_report_id": (
-            db_report.id
-        ),
-
-        "soar_action_id": (
-            db_soar_action.id
-            if db_soar_action
-            else None
-        ),
-
-        "incident": result.get(
-            "incident"
-        ),
-
-        "triage": result.get(
-            "triage"
-        ),
-
-        "threat_intelligence": result.get(
-            "threat_intelligence"
-        ),
-
-        "rag_context": result.get(
-            "rag_context",
-            [],
-        ),
-
-        "investigation": result.get(
-            "investigation"
-        ),
-
-        "mitre_validation": result.get(
-            "mitre_validation"
-        ),
-
-        "human_review": result.get(
-            "human_review"
-        ),
-
-        "response": result.get(
-            "response"
-        ),
-
-        "soar_action": result.get(
-            "soar_action"
-        ),
-
-        "report": result.get(
-            "report"
-        ),
-
-        "agent_trace": result.get(
-            "agent_trace",
-            [],
-        ),
-    }
+    return build_completed_response(
+        result=result,
+        thread_id=thread_id,
+        db_analysis=db_analysis,
+        db_report=db_report,
+        db_soar_action=db_soar_action,
+    )
