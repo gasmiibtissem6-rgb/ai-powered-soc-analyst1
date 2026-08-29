@@ -9,7 +9,7 @@ from app.api import threat_intelligence
 from app.api import mitre
 from app.api import agents
 from app.api import reports
-
+from app.api import soar
 
 app = FastAPI(
     title="AI-Powered SOC Analyst API",
@@ -26,7 +26,7 @@ app.include_router(auth_router)
 app.include_router(alerts_router)
 app.include_router(incidents_router)
 app.include_router(ai_analysis_router)
-
+app.include_router(soar.router)
 app.include_router(threat_intelligence.router)
 app.include_router(mitre.router)
 app.include_router(agents.router)

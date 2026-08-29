@@ -10,6 +10,12 @@ class IncidentBase(BaseModel):
     severity: str = "medium"
     status: str = "open"
     source: Optional[str] = None
+
+    hostname: Optional[str] = None
+    source_ip: Optional[str] = None
+    destination_ip: Optional[str] = None
+    username: Optional[str] = None
+
     assigned_to: Optional[str] = None
 
 
@@ -23,6 +29,12 @@ class IncidentUpdate(BaseModel):
     severity: Optional[str] = None
     status: Optional[str] = None
     source: Optional[str] = None
+
+    hostname: Optional[str] = None
+    source_ip: Optional[str] = None
+    destination_ip: Optional[str] = None
+    username: Optional[str] = None
+
     assigned_to: Optional[str] = None
 
 

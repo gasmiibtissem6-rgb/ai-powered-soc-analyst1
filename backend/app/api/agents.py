@@ -7,6 +7,7 @@ from fastapi import (
     HTTPException,
     status,
 )
+
 from langgraph.types import Command
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -14,10 +15,16 @@ from sqlalchemy.orm import Session
 from app.agents.soc_graph import soc_graph
 from app.core.config import settings
 from app.database.session import get_db
+
 from app.models.ai_analysis import AIAnalysis
 from app.models.incident import Incident
 from app.models.report import SOCReport
+from app.models.soar_action import SOARAction
 
+
+# =========================================================
+# ROUTER
+# =========================================================
 
 router = APIRouter(
     prefix="/agents",
@@ -215,7 +222,7 @@ def save_ai_analysis(
             False,
         ),
 
-        # JSONB : on sauvegarde directement la liste
+        # JSONB
         rag_sources=rag_sources,
 
         human_approval_required=(
@@ -240,7 +247,7 @@ def save_ai_analysis(
 
         thread_id=thread_id,
 
-        # JSONB : on sauvegarde directement la liste
+        # JSONB
         agent_trace=agent_trace,
 
         model_used=settings.LLM_MODEL,
@@ -467,6 +474,157 @@ def save_soc_report(
 
 
 # =========================================================
+# SAVE SOAR ACTION
+# =========================================================
+
+def save_soar_action(
+    db: Session,
+    result: dict,
+) -> Optional[SOARAction]:
+
+    # -----------------------------------------------------
+    # 1. Lire la proposition SOAR créée par LangGraph
+    # -----------------------------------------------------
+
+    soar_data = (
+        result.get("soar_action")
+        or {}
+    )
+
+    if not soar_data:
+        return None
+
+    incident_id = soar_data.get(
+        "incident_id"
+    )
+
+    action_type = soar_data.get(
+        "action_type"
+    )
+
+    target = soar_data.get(
+        "target"
+    )
+
+    if (
+        not incident_id
+        or not action_type
+        or not target
+    ):
+        return None
+
+    # -----------------------------------------------------
+    # 2. Lire la décision humaine
+    # -----------------------------------------------------
+
+    human_review = (
+        result.get("human_review")
+        or {}
+    )
+
+    human_review_required = bool(
+        human_review.get(
+            "required",
+            False,
+        )
+    )
+
+    # Si le workflow a demandé une validation humaine,
+    # on récupère directement la décision déjà donnée.
+    if human_review_required:
+
+        approved = (
+            human_review.get(
+                "approved"
+            )
+            is True
+        )
+
+        requires_approval = True
+
+    else:
+
+        # Pour les incidents non critiques,
+        # aucune validation supplémentaire n'est nécessaire.
+        approved = True
+        requires_approval = False
+
+    # -----------------------------------------------------
+    # 3. Déterminer le status initial
+    # -----------------------------------------------------
+
+    if approved:
+        action_status = "approved"
+    else:
+        action_status = "pending"
+
+    # -----------------------------------------------------
+    # 4. Eviter les doublons
+    # -----------------------------------------------------
+
+    existing_action = (
+        db.query(SOARAction)
+        .filter(
+            SOARAction.incident_id == incident_id,
+            SOARAction.action_type == action_type,
+            SOARAction.target == target,
+        )
+        .first()
+    )
+
+    if existing_action:
+        return existing_action
+
+    # -----------------------------------------------------
+    # 5. Construire l'action SOAR
+    # -----------------------------------------------------
+
+    db_action = SOARAction(
+        incident_id=incident_id,
+
+        action_type=action_type,
+
+        target=target,
+
+        status=action_status,
+
+        requires_approval=(
+            requires_approval
+        ),
+
+        approved=approved,
+
+        result=None,
+
+        executed_at=None,
+    )
+
+    # -----------------------------------------------------
+    # 6. Sauvegarder
+    # -----------------------------------------------------
+
+    try:
+        db.add(db_action)
+        db.commit()
+        db.refresh(db_action)
+
+    except Exception as exc:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail=(
+                "Unable to save SOAR action: "
+                f"{str(exc)}"
+            ),
+        )
+
+    return db_action
+
+
+# =========================================================
 # START SOC WORKFLOW
 # =========================================================
 
@@ -513,14 +671,22 @@ def analyze_incident_with_agents(
     # -----------------------------------------------------
 
     initial_state = {
-        "incident": {
-            "id": incident.id,
-            "title": incident.title,
-            "description": incident.description,
-            "severity": incident.severity,
-            "source": incident.source,
-        }
+    "incident": {
+        "id": incident.id,
+        "title": incident.title,
+        "description": incident.description,
+        "severity": incident.severity,
+        "status": incident.status,
+        "source": incident.source,
+        "assigned_to": incident.assigned_to,
+
+        # Technical fields
+        "hostname": incident.hostname,
+        "source_ip": incident.source_ip,
+        "destination_ip": incident.destination_ip,
+        "username": incident.username,
     }
+}
 
     # -----------------------------------------------------
     # 4. Lancer LangGraph
@@ -618,14 +784,29 @@ def analyze_incident_with_agents(
         ai_analysis_id=db_analysis.id,
     )
 
+    db_soar_action = save_soar_action(
+        db=db,
+        result=result,
+    )
+
     return {
         "status": "completed",
 
         "thread_id": thread_id,
 
-        "ai_analysis_id": db_analysis.id,
+        "ai_analysis_id": (
+            db_analysis.id
+        ),
 
-        "soc_report_id": db_report.id,
+        "soc_report_id": (
+            db_report.id
+        ),
+
+        "soar_action_id": (
+            db_soar_action.id
+            if db_soar_action
+            else None
+        ),
 
         "incident": result.get(
             "incident"
@@ -658,6 +839,10 @@ def analyze_incident_with_agents(
 
         "response": result.get(
             "response"
+        ),
+
+        "soar_action": result.get(
+            "soar_action"
         ),
 
         "report": result.get(
@@ -780,6 +965,7 @@ def resume_soc_workflow(
                     "approved": (
                         decision.approved
                     ),
+
                     "comment": (
                         decision.comment
                     ),
@@ -873,7 +1059,16 @@ def resume_soc_workflow(
     )
 
     # -----------------------------------------------------
-    # 10. Résultat final
+    # 10. Sauvegarder SOAR Action
+    # -----------------------------------------------------
+
+    db_soar_action = save_soar_action(
+        db=db,
+        result=result,
+    )
+
+    # -----------------------------------------------------
+    # 11. Résultat final
     # -----------------------------------------------------
 
     return {
@@ -881,9 +1076,19 @@ def resume_soc_workflow(
 
         "thread_id": thread_id,
 
-        "ai_analysis_id": db_analysis.id,
+        "ai_analysis_id": (
+            db_analysis.id
+        ),
 
-        "soc_report_id": db_report.id,
+        "soc_report_id": (
+            db_report.id
+        ),
+
+        "soar_action_id": (
+            db_soar_action.id
+            if db_soar_action
+            else None
+        ),
 
         "incident": result.get(
             "incident"
@@ -916,6 +1121,10 @@ def resume_soc_workflow(
 
         "response": result.get(
             "response"
+        ),
+
+        "soar_action": result.get(
+            "soar_action"
         ),
 
         "report": result.get(

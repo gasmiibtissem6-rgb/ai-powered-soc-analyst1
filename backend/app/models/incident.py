@@ -42,6 +42,30 @@ class Incident(Base):
         nullable=True,
     )
 
+    # Machine / endpoint concerné
+    hostname: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    # IP source observée dans l'incident
+    source_ip: Mapped[Optional[str]] = mapped_column(
+        String(45),
+        nullable=True,
+    )
+
+    # IP destination éventuelle
+    destination_ip: Mapped[Optional[str]] = mapped_column(
+        String(45),
+        nullable=True,
+    )
+
+    # Utilisateur concerné
+    username: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
     assigned_to: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,

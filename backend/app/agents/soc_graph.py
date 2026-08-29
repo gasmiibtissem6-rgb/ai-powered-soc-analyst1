@@ -41,6 +41,8 @@ class SOCState(TypedDict, total=False):
 
     response: dict
 
+    soar_action: dict
+
     report: dict
 
     agent_trace: Annotated[
@@ -139,10 +141,6 @@ def threat_intelligence_agent(
 def investigation_agent(
     state: SOCState,
 ) -> dict:
-
-    # -----------------------------------------------------
-    # Incident
-    # -----------------------------------------------------
 
     incident = state.get(
         "incident",
@@ -263,10 +261,6 @@ def investigation_agent(
             "description": None,
             "valid": False,
         }
-
-    # -----------------------------------------------------
-    # RETURN
-    # -----------------------------------------------------
 
     return {
         "investigation": result,
@@ -462,6 +456,127 @@ def approval_router(
 
 
 # =========================================================
+# SOAR ACTION BUILDER
+# =========================================================
+
+def build_soar_action(
+    incident: dict,
+    recommendation: str,
+) -> dict:
+
+    recommendation_lower = str(
+        recommendation or ""
+    ).lower()
+
+    # -----------------------------------------------------
+    # 1. Déterminer le type d'action SOAR
+    # -----------------------------------------------------
+
+    action_type = "create_ticket"
+
+    if "isolate" in recommendation_lower:
+
+        action_type = "isolate_endpoint"
+
+    elif (
+        "block" in recommendation_lower
+        and "ip" in recommendation_lower
+    ):
+
+        action_type = "block_ip"
+
+    elif (
+        "disable" in recommendation_lower
+        and (
+            "user" in recommendation_lower
+            or "account" in recommendation_lower
+        )
+    ):
+
+        action_type = "disable_user"
+
+    elif (
+        "notify" in recommendation_lower
+        or "notification" in recommendation_lower
+    ):
+
+        action_type = "send_notification"
+
+    # -----------------------------------------------------
+    # 2. Déterminer la cible selon le type d'action
+    # -----------------------------------------------------
+
+    if action_type == "isolate_endpoint":
+
+        target = (
+            incident.get("hostname")
+            or incident.get("endpoint")
+            or incident.get("device_name")
+            or incident.get("target")
+            or "unknown-endpoint"
+        )
+
+    elif action_type == "block_ip":
+
+        target = (
+            incident.get("ip_address")
+            or incident.get("source_ip")
+            or incident.get("src_ip")
+            or incident.get("ip")
+            or incident.get("target")
+            or "unknown-ip"
+        )
+
+    elif action_type == "disable_user":
+
+        target = (
+            incident.get("username")
+            or incident.get("user")
+            or incident.get("account")
+            or incident.get("target")
+            or "unknown-user"
+        )
+
+    elif action_type == "send_notification":
+
+        target = (
+            incident.get("notification_target")
+            or "soc-team"
+        )
+
+    else:
+
+        target = (
+            incident.get("hostname")
+            or incident.get("endpoint")
+            or incident.get("target")
+            or f"incident-{incident.get('id', 'unknown')}"
+        )
+
+    # -----------------------------------------------------
+    # 3. Construire la proposition SOAR
+    # -----------------------------------------------------
+
+    return {
+        "incident_id": (
+            incident.get("id")
+        ),
+
+        "action_type": (
+            action_type
+        ),
+
+        "target": (
+            target
+        ),
+
+        "requires_approval": True,
+
+        "status": "proposed",
+    }
+
+
+# =========================================================
 # 5. RESPONSE AGENT
 # =========================================================
 
@@ -548,8 +663,29 @@ def response_agent(
         ),
     }
 
+    # -----------------------------------------------------
+    # Construire SOAR action seulement si autorisée
+    # -----------------------------------------------------
+
+    soar_action = {}
+
+    if approved:
+
+        soar_action = build_soar_action(
+            incident=incident,
+
+            recommendation=(
+                investigation.get(
+                    "recommendation",
+                    "",
+                )
+            ),
+        )
+
     return {
         "response": response,
+
+        "soar_action": soar_action,
 
         "agent_trace": [
             "Response"
@@ -590,6 +726,11 @@ def report_agent(
         {},
     )
 
+    soar_action = state.get(
+        "soar_action",
+        {},
+    )
+
     # -----------------------------------------------------
     # RAG SOURCES
     # -----------------------------------------------------
@@ -602,7 +743,10 @@ def report_agent(
     rag_sources = [
         item.get("source")
         for item in rag_context
-        if item.get("source")
+        if (
+            isinstance(item, dict)
+            and item.get("source")
+        )
     ]
 
     # -----------------------------------------------------
@@ -683,6 +827,10 @@ def report_agent(
                 "status",
                 "not_executed",
             )
+        ),
+
+        "soar_action": (
+            soar_action
         ),
 
         "rag_sources": (
