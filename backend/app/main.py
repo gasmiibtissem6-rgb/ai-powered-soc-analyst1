@@ -10,7 +10,7 @@ from app.api import mitre
 from app.api import agents
 from app.api import reports
 from app.api import soar
-
+from app.api import suricata
 app = FastAPI(
     title="AI-Powered SOC Analyst API",
     description="Backend API for the intelligent SOC platform",
@@ -31,6 +31,7 @@ app.include_router(threat_intelligence.router)
 app.include_router(mitre.router)
 app.include_router(agents.router)
 app.include_router(wazuh.router)
+app.include_router(suricata.router)
 # SOC Reports
 app.include_router(reports.router)
 
