@@ -45,6 +45,39 @@ class AnalyzeIncidentRequest(BaseModel):
 
 
 # =========================================================
+# WORKFLOW STATUS HELPER
+# =========================================================
+
+def update_incident_workflow_status(
+    db: Session,
+    incident: Incident,
+    workflow_status: str,
+    workflow_error: Optional[str] = None,
+) -> None:
+    """
+    Persist the current SOC workflow state on the incident.
+    """
+
+    incident.workflow_status = workflow_status
+    incident.workflow_error = workflow_error
+
+    try:
+        db.commit()
+        db.refresh(incident)
+
+    except Exception as exc:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Unable to update incident workflow status: "
+                f"{str(exc)}"
+            ),
+        )
+
+
+# =========================================================
 # SAVE AI ANALYSIS
 # =========================================================
 
@@ -53,10 +86,6 @@ def save_ai_analysis(
     result: dict,
     thread_id: str,
 ) -> AIAnalysis:
-
-    # -----------------------------------------------------
-    # 1. Avoid duplicates
-    # -----------------------------------------------------
 
     existing_analysis = (
         db.query(AIAnalysis)
@@ -68,10 +97,6 @@ def save_ai_analysis(
 
     if existing_analysis:
         return existing_analysis
-
-    # -----------------------------------------------------
-    # 2. Workflow data
-    # -----------------------------------------------------
 
     incident = (
         result.get("incident")
@@ -118,10 +143,6 @@ def save_ai_analysis(
         or []
     )
 
-    # -----------------------------------------------------
-    # 3. RAG sources
-    # -----------------------------------------------------
-
     rag_sources = [
         item.get("source")
         for item in rag_context
@@ -130,10 +151,6 @@ def save_ai_analysis(
             and item.get("source")
         )
     ]
-
-    # -----------------------------------------------------
-    # 4. Risk level
-    # -----------------------------------------------------
 
     risk_level = investigation.get(
         "risk_level"
@@ -144,10 +161,6 @@ def save_ai_analysis(
             "severity",
             "unknown",
         )
-
-    # -----------------------------------------------------
-    # 5. Human review
-    # -----------------------------------------------------
 
     human_approval_required = (
         human_review.get(
@@ -174,10 +187,6 @@ def save_ai_analysis(
         )
     )
 
-    # -----------------------------------------------------
-    # 6. Response status
-    # -----------------------------------------------------
-
     response_status = response.get(
         "status"
     )
@@ -187,10 +196,6 @@ def save_ai_analysis(
             "response_status",
             "not_executed",
         )
-
-    # -----------------------------------------------------
-    # 7. Create AIAnalysis
-    # -----------------------------------------------------
 
     db_analysis = AIAnalysis(
         incident_id=incident.get(
@@ -254,10 +259,6 @@ def save_ai_analysis(
         model_used=settings.LLM_MODEL,
     )
 
-    # -----------------------------------------------------
-    # 8. Save
-    # -----------------------------------------------------
-
     try:
         db.add(db_analysis)
         db.commit()
@@ -290,10 +291,6 @@ def save_soc_report(
     ai_analysis_id: int,
 ) -> SOCReport:
 
-    # -----------------------------------------------------
-    # 1. Avoid duplicates
-    # -----------------------------------------------------
-
     existing_report = (
         db.query(SOCReport)
         .filter(
@@ -304,10 +301,6 @@ def save_soc_report(
 
     if existing_report:
         return existing_report
-
-    # -----------------------------------------------------
-    # 2. Workflow data
-    # -----------------------------------------------------
 
     incident = (
         result.get("incident")
@@ -354,10 +347,6 @@ def save_soc_report(
         or []
     )
 
-    # -----------------------------------------------------
-    # 3. RAG sources
-    # -----------------------------------------------------
-
     rag_sources = [
         item.get("source")
         for item in rag_context
@@ -366,10 +355,6 @@ def save_soc_report(
             and item.get("source")
         )
     ]
-
-    # -----------------------------------------------------
-    # 4. ML probabilities
-    # -----------------------------------------------------
 
     ml_probabilities = {
         "BENIGN": ml_analysis.get(
@@ -388,10 +373,6 @@ def save_soc_report(
             "ssh_patator_probability"
         ),
     }
-
-    # -----------------------------------------------------
-    # 5. Create SOC Report
-    # -----------------------------------------------------
 
     db_report = SOCReport(
         incident_id=incident.get(
@@ -484,10 +465,6 @@ def save_soc_report(
         agent_trace=agent_trace,
     )
 
-    # -----------------------------------------------------
-    # 6. Save
-    # -----------------------------------------------------
-
     try:
         db.add(db_report)
         db.commit()
@@ -518,10 +495,6 @@ def save_soar_action(
     result: dict,
 ) -> Optional[SOARAction]:
 
-    # -----------------------------------------------------
-    # 1. Read SOAR proposal
-    # -----------------------------------------------------
-
     soar_data = (
         result.get("soar_action")
         or {}
@@ -549,10 +522,6 @@ def save_soar_action(
     ):
         return None
 
-    # -----------------------------------------------------
-    # 2. Human review
-    # -----------------------------------------------------
-
     human_review = (
         result.get("human_review")
         or {}
@@ -566,33 +535,21 @@ def save_soar_action(
     )
 
     if human_review_required:
-
         approved = (
             human_review.get(
                 "approved"
             )
             is True
         )
-
         requires_approval = True
-
     else:
-
         approved = True
         requires_approval = False
-
-    # -----------------------------------------------------
-    # 3. Status
-    # -----------------------------------------------------
 
     if approved:
         action_status = "approved"
     else:
         action_status = "pending"
-
-    # -----------------------------------------------------
-    # 4. Avoid duplicates
-    # -----------------------------------------------------
 
     existing_action = (
         db.query(SOARAction)
@@ -611,10 +568,6 @@ def save_soar_action(
 
     if existing_action:
         return existing_action
-
-    # -----------------------------------------------------
-    # 5. Create action
-    # -----------------------------------------------------
 
     db_action = SOARAction(
         incident_id=incident_id,
@@ -635,10 +588,6 @@ def save_soar_action(
 
         executed_at=None,
     )
-
-    # -----------------------------------------------------
-    # 6. Save
-    # -----------------------------------------------------
 
     try:
         db.add(db_action)
@@ -683,7 +632,6 @@ def build_initial_state(
             "source": incident.source,
             "assigned_to": incident.assigned_to,
 
-            # Technical fields
             "hostname": incident.hostname,
             "source_ip": incident.source_ip,
             "destination_ip": (
@@ -691,7 +639,6 @@ def build_initial_state(
             ),
             "username": incident.username,
 
-            # Machine Learning features
             "ml_features": (
                 request.ml_features
                 if request
@@ -856,13 +803,25 @@ def run_soc_workflow(
     """
     Start the SOC LangGraph workflow.
 
-    This function is reusable from:
-    - /agents/analyze/{incident_id}
-    - Wazuh ingestion API
+    Workflow lifecycle:
+    running -> waiting_for_human
+    running -> completed
+    running -> failed
     """
 
     # -----------------------------------------------------
-    # 1. Create LangGraph thread
+    # 1. Mark workflow as running
+    # -----------------------------------------------------
+
+    update_incident_workflow_status(
+        db=db,
+        incident=incident,
+        workflow_status="running",
+        workflow_error=None,
+    )
+
+    # -----------------------------------------------------
+    # 2. Create LangGraph thread
     # -----------------------------------------------------
 
     thread_id = str(
@@ -876,7 +835,7 @@ def run_soc_workflow(
     }
 
     # -----------------------------------------------------
-    # 2. Initial state
+    # 3. Initial state
     # -----------------------------------------------------
 
     initial_state = build_initial_state(
@@ -885,7 +844,7 @@ def run_soc_workflow(
     )
 
     # -----------------------------------------------------
-    # 3. Run LangGraph
+    # 4. Run LangGraph
     # -----------------------------------------------------
 
     try:
@@ -895,6 +854,17 @@ def run_soc_workflow(
         )
 
     except Exception as exc:
+
+        try:
+            update_incident_workflow_status(
+                db=db,
+                incident=incident,
+                workflow_status="failed",
+                workflow_error=str(exc),
+            )
+        except Exception:
+            pass
+
         raise HTTPException(
             status_code=(
                 status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -906,7 +876,7 @@ def run_soc_workflow(
         )
 
     # -----------------------------------------------------
-    # 4. Human interruption
+    # 5. Human interruption
     # -----------------------------------------------------
 
     interrupts = result.get(
@@ -915,31 +885,65 @@ def run_soc_workflow(
     )
 
     if interrupts:
+
+        update_incident_workflow_status(
+            db=db,
+            incident=incident,
+            workflow_status="waiting_for_human",
+            workflow_error=None,
+        )
+
         return build_waiting_response(
             result=result,
             thread_id=thread_id,
         )
 
     # -----------------------------------------------------
-    # 5. Save completed workflow
+    # 6. Save completed workflow
     # -----------------------------------------------------
 
-    db_analysis = save_ai_analysis(
-        db=db,
-        result=result,
-        thread_id=thread_id,
-    )
+    try:
+        db_analysis = save_ai_analysis(
+            db=db,
+            result=result,
+            thread_id=thread_id,
+        )
 
-    db_report = save_soc_report(
-        db=db,
-        result=result,
-        thread_id=thread_id,
-        ai_analysis_id=db_analysis.id,
-    )
+        db_report = save_soc_report(
+            db=db,
+            result=result,
+            thread_id=thread_id,
+            ai_analysis_id=db_analysis.id,
+        )
 
-    db_soar_action = save_soar_action(
+        db_soar_action = save_soar_action(
+            db=db,
+            result=result,
+        )
+
+    except Exception as exc:
+
+        try:
+            update_incident_workflow_status(
+                db=db,
+                incident=incident,
+                workflow_status="failed",
+                workflow_error=str(exc),
+            )
+        except Exception:
+            pass
+
+        raise
+
+    # -----------------------------------------------------
+    # 7. Mark workflow completed
+    # -----------------------------------------------------
+
+    update_incident_workflow_status(
         db=db,
-        result=result,
+        incident=incident,
+        workflow_status="completed",
+        workflow_error=None,
     )
 
     return build_completed_response(
@@ -962,10 +966,6 @@ def analyze_incident_with_agents(
     db: Session = Depends(get_db),
 ):
 
-    # -----------------------------------------------------
-    # 1. Load incident
-    # -----------------------------------------------------
-
     incident = (
         db.query(Incident)
         .filter(
@@ -981,10 +981,6 @@ def analyze_incident_with_agents(
             ),
             detail="Incident not found",
         )
-
-    # -----------------------------------------------------
-    # 2. Run reusable workflow service
-    # -----------------------------------------------------
 
     return run_soc_workflow(
         db=db,
@@ -1065,6 +1061,37 @@ def resume_soc_workflow(
             ),
         )
 
+    incident_id = incident_state.get(
+        "id"
+    )
+
+    if not incident_id:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_409_CONFLICT
+            ),
+            detail=(
+                "Workflow state is incomplete: "
+                "incident id is missing."
+            ),
+        )
+
+    db_incident = (
+        db.query(Incident)
+        .filter(
+            Incident.id == incident_id
+        )
+        .first()
+    )
+
+    if not db_incident:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_404_NOT_FOUND
+            ),
+            detail="Incident not found in database.",
+        )
+
     # -----------------------------------------------------
     # 4. Check investigation
     # -----------------------------------------------------
@@ -1100,7 +1127,18 @@ def resume_soc_workflow(
         )
 
     # -----------------------------------------------------
-    # 6. Resume LangGraph
+    # 6. Mark workflow as running again
+    # -----------------------------------------------------
+
+    update_incident_workflow_status(
+        db=db,
+        incident=db_incident,
+        workflow_status="running",
+        workflow_error=None,
+    )
+
+    # -----------------------------------------------------
+    # 7. Resume LangGraph
     # -----------------------------------------------------
 
     try:
@@ -1119,6 +1157,17 @@ def resume_soc_workflow(
         )
 
     except Exception as exc:
+
+        try:
+            update_incident_workflow_status(
+                db=db,
+                incident=db_incident,
+                workflow_status="failed",
+                workflow_error=str(exc),
+            )
+        except Exception:
+            pass
+
         raise HTTPException(
             status_code=(
                 status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -1130,7 +1179,7 @@ def resume_soc_workflow(
         )
 
     # -----------------------------------------------------
-    # 7. Check another interruption
+    # 8. Check another interruption
     # -----------------------------------------------------
 
     remaining_interrupts = result.get(
@@ -1139,39 +1188,65 @@ def resume_soc_workflow(
     )
 
     if remaining_interrupts:
+
+        update_incident_workflow_status(
+            db=db,
+            incident=db_incident,
+            workflow_status="waiting_for_human",
+            workflow_error=None,
+        )
+
         return build_waiting_response(
             result=result,
             thread_id=thread_id,
         )
 
     # -----------------------------------------------------
-    # 8. Save AI Analysis
+    # 9. Save final workflow results
     # -----------------------------------------------------
 
-    db_analysis = save_ai_analysis(
+    try:
+        db_analysis = save_ai_analysis(
+            db=db,
+            result=result,
+            thread_id=thread_id,
+        )
+
+        db_report = save_soc_report(
+            db=db,
+            result=result,
+            thread_id=thread_id,
+            ai_analysis_id=db_analysis.id,
+        )
+
+        db_soar_action = save_soar_action(
+            db=db,
+            result=result,
+        )
+
+    except Exception as exc:
+
+        try:
+            update_incident_workflow_status(
+                db=db,
+                incident=db_incident,
+                workflow_status="failed",
+                workflow_error=str(exc),
+            )
+        except Exception:
+            pass
+
+        raise
+
+    # -----------------------------------------------------
+    # 10. Mark completed
+    # -----------------------------------------------------
+
+    update_incident_workflow_status(
         db=db,
-        result=result,
-        thread_id=thread_id,
-    )
-
-    # -----------------------------------------------------
-    # 9. Save SOC Report
-    # -----------------------------------------------------
-
-    db_report = save_soc_report(
-        db=db,
-        result=result,
-        thread_id=thread_id,
-        ai_analysis_id=db_analysis.id,
-    )
-
-    # -----------------------------------------------------
-    # 10. Save SOAR Action
-    # -----------------------------------------------------
-
-    db_soar_action = save_soar_action(
-        db=db,
-        result=result,
+        incident=db_incident,
+        workflow_status="completed",
+        workflow_error=None,
     )
 
     # -----------------------------------------------------

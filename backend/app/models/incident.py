@@ -71,6 +71,21 @@ class Incident(Base):
         nullable=True,
     )
 
+    # --------------------------------------------------
+    # SOC workflow state
+    # --------------------------------------------------
+
+    workflow_status: Mapped[str] = mapped_column(
+        String(50),
+        default="pending",
+        nullable=False,
+    )
+
+    workflow_error: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,
