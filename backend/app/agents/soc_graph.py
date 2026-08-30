@@ -182,39 +182,97 @@ def threat_intelligence_agent(
         {},
     )
 
-    service = (
-        ThreatIntelligenceService()
+    service = ThreatIntelligenceService()
+
+    results = []
+    analyzed_ips = set()
+
+    # -----------------------------------------------------
+    # 1. Analyze source_ip directly
+    # -----------------------------------------------------
+
+    source_ip = incident.get(
+        "source_ip"
     )
+
+    if source_ip:
+        try:
+            result = service.check_ip(
+                source_ip
+            )
+
+            results.append(
+                result
+            )
+
+            analyzed_ips.add(
+                source_ip
+            )
+
+        except Exception as exc:
+            results.append(
+                {
+                    "ip_address": source_ip,
+                    "error": (
+                        "Threat Intelligence failed: "
+                        f"{str(exc)}"
+                    ),
+                }
+            )
+
+    # -----------------------------------------------------
+    # 2. Analyze other IPs present in text
+    # -----------------------------------------------------
 
     text = (
         f"{incident.get('title', '')} "
         f"{incident.get('description', '')}"
     )
 
-    try:
+    extracted_ips = service.extract_ips(
+        text
+    )
 
-        result = service.analyze_text(
-            text
-        )
+    for ip_address in extracted_ips:
 
-    except Exception as exc:
+        # Avoid checking same IP twice
+        if ip_address in analyzed_ips:
+            continue
 
-        result = [
-            {
-                "error": (
-                    "Threat Intelligence failed: "
-                    f"{str(exc)}"
-                )
-            }
-        ]
+        try:
+            result = service.check_ip(
+                ip_address
+            )
+
+            results.append(
+                result
+            )
+
+            analyzed_ips.add(
+                ip_address
+            )
+
+        except Exception as exc:
+            results.append(
+                {
+                    "ip_address": ip_address,
+                    "error": (
+                        "Threat Intelligence failed: "
+                        f"{str(exc)}"
+                    ),
+                }
+            )
 
     return {
-        "threat_intelligence": result,
+        "threat_intelligence": results,
 
         "agent_trace": [
             "Threat Intelligence"
         ],
     }
+
+
+
 
 
 # =========================================================
