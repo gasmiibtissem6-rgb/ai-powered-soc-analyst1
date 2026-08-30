@@ -1,4 +1,5 @@
 from datetime import datetime
+from ipaddress import ip_address
 
 from sqlalchemy.orm import Session
 
@@ -11,7 +12,11 @@ class SOARService:
 
     @staticmethod
     def get_actions(db: Session):
-        return db.query(SOARAction).order_by(SOARAction.id.desc()).all()
+        return (
+            db.query(SOARAction)
+            .order_by(SOARAction.id.desc())
+            .all()
+        )
 
     @staticmethod
     def get_action(db: Session, action_id: int):
@@ -22,7 +27,10 @@ class SOARService:
         )
 
     @staticmethod
-    def create_action(db: Session, data: SOARActionCreate):
+    def create_action(
+        db: Session,
+        data: SOARActionCreate,
+    ):
         incident = (
             db.query(Incident)
             .filter(Incident.id == data.incident_id)
@@ -47,8 +55,14 @@ class SOARService:
         return action
 
     @staticmethod
-    def approve_action(db: Session, action_id: int):
-        action = SOARService.get_action(db, action_id)
+    def approve_action(
+        db: Session,
+        action_id: int,
+    ):
+        action = SOARService.get_action(
+            db,
+            action_id,
+        )
 
         if not action:
             return None
@@ -62,8 +76,14 @@ class SOARService:
         return action
 
     @staticmethod
-    def reject_action(db: Session, action_id: int):
-        action = SOARService.get_action(db, action_id)
+    def reject_action(
+        db: Session,
+        action_id: int,
+    ):
+        action = SOARService.get_action(
+            db,
+            action_id,
+        )
 
         if not action:
             return None
@@ -77,22 +97,92 @@ class SOARService:
         return action
 
     @staticmethod
-    def execute_action(db: Session, action_id: int):
-        action = SOARService.get_action(db, action_id)
+    def is_safe_ip_target(target: str) -> bool:
+        """
+        Return False when the IP must not be blocked.
+
+        Protected examples:
+        - 127.0.0.1
+        - localhost/loopback addresses
+        - unspecified addresses such as 0.0.0.0
+        - multicast addresses
+        """
+
+        if not target:
+            return False
+
+        try:
+            ip = ip_address(target)
+        except ValueError:
+            return False
+
+        if ip.is_loopback:
+            return False
+
+        if ip.is_unspecified:
+            return False
+
+        if ip.is_multicast:
+            return False
+
+        return True
+
+    @staticmethod
+    def execute_action(
+        db: Session,
+        action_id: int,
+    ):
+        action = SOARService.get_action(
+            db,
+            action_id,
+        )
 
         if not action:
             return None
 
-        if action.requires_approval and action.approved is not True:
+        if (
+            action.requires_approval
+            and action.approved is not True
+        ):
             return "approval_required"
 
-        # Simulation de l'action SOAR pour le prototype.
+        # --------------------------------------------------
+        # Safety check for IP blocking
+        # --------------------------------------------------
+        if action.action_type == "block_ip":
+
+            if not SOARService.is_safe_ip_target(
+                action.target
+            ):
+                action.status = "blocked_by_safety"
+
+                action.result = {
+                    "success": False,
+                    "message": (
+                        "SOAR safety policy prevented "
+                        "blocking a protected or invalid IP."
+                    ),
+                    "target": action.target,
+                }
+
+                db.commit()
+                db.refresh(action)
+
+                return action
+
+        # --------------------------------------------------
+        # Prototype SOAR execution
+        # --------------------------------------------------
         action.status = "executed"
         action.executed_at = datetime.utcnow()
 
         action.result = {
             "success": True,
-            "message": f"SOAR action '{action.action_type}' executed successfully.",
+            "message": (
+                f"SOAR action "
+                f"'{action.action_type}' "
+                f"executed successfully."
+            ),
             "target": action.target,
         }
 

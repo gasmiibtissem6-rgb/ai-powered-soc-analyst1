@@ -17,9 +17,41 @@ class WazuhService:
         alert: dict[str, Any],
     ) -> dict[str, Any]:
 
-        rule = alert.get("rule", {}) or {}
-        agent = alert.get("agent", {}) or {}
-        data = alert.get("data", {}) or {}
+        # --------------------------------------------------
+        # Support both formats:
+        #
+        # 1. Direct Wazuh alert:
+        #    {
+        #        "rule": {...},
+        #        "agent": {...},
+        #        "data": {...}
+        #    }
+        #
+        # 2. Real Wazuh/OpenSearch document:
+        #    {
+        #        "_source": {
+        #            "rule": {...},
+        #            "agent": {...},
+        #            "data": {...}
+        #        }
+        #    }
+        # --------------------------------------------------
+
+        source = alert.get("_source")
+
+        if isinstance(source, dict):
+            alert_data = source
+        else:
+            alert_data = alert
+
+        rule = alert_data.get("rule", {}) or {}
+        agent = alert_data.get("agent", {}) or {}
+        data = alert_data.get("data", {}) or {}
+        predecoder = alert_data.get("predecoder", {}) or {}
+
+        # --------------------------------------------------
+        # Source IP
+        # --------------------------------------------------
 
         source_ip = (
             data.get("srcip")
@@ -27,11 +59,22 @@ class WazuhService:
             or data.get("source_ip")
         )
 
+        # --------------------------------------------------
+        # Destination IP
+        # --------------------------------------------------
+
         destination_ip = (
             data.get("dstip")
             or data.get("dst_ip")
             or data.get("destination_ip")
         )
+
+        # --------------------------------------------------
+        # Username
+        #
+        # Real SSH Wazuh alerts commonly use:
+        # data.srcuser
+        # --------------------------------------------------
 
         username = (
             data.get("srcuser")
@@ -40,10 +83,19 @@ class WazuhService:
             or data.get("username")
         )
 
+        # --------------------------------------------------
+        # Hostname
+        # --------------------------------------------------
+
         hostname = (
             agent.get("name")
             or data.get("hostname")
+            or predecoder.get("hostname")
         )
+
+        # --------------------------------------------------
+        # Wazuh rule level
+        # --------------------------------------------------
 
         rule_level = rule.get("level", 0)
 
@@ -52,32 +104,65 @@ class WazuhService:
         except (TypeError, ValueError):
             rule_level = 0
 
-        severity = self._map_severity(
-            rule_level
-        )
+        severity = self._map_severity(rule_level)
+
+        # --------------------------------------------------
+        # Incident title
+        # --------------------------------------------------
 
         title = (
             rule.get("description")
             or "Wazuh security alert"
         )
 
+        # --------------------------------------------------
+        # Incident description
+        # --------------------------------------------------
+
         description = (
-            alert.get("full_log")
-            or alert.get("message")
+            alert_data.get("full_log")
+            or alert_data.get("message")
             or title
         )
+
+        # --------------------------------------------------
+        # MITRE ATT&CK
+        # --------------------------------------------------
+
+        mitre = rule.get("mitre", {}) or {}
+
+        mitre_ids = mitre.get("id", []) or []
+        mitre_techniques = mitre.get("technique", []) or []
+        mitre_tactics = mitre.get("tactic", []) or []
+
+        # --------------------------------------------------
+        # Normalized response
+        # --------------------------------------------------
 
         return {
             "title": title,
             "description": description,
             "severity": severity,
             "source": "Wazuh",
+
             "hostname": hostname,
             "source_ip": source_ip,
             "destination_ip": destination_ip,
             "username": username,
+
             "wazuh_rule_id": rule.get("id"),
             "wazuh_rule_level": rule_level,
+
+            "wazuh_agent_id": agent.get("id"),
+            "wazuh_agent_name": agent.get("name"),
+            "wazuh_agent_ip": agent.get("ip"),
+
+            "mitre_ids": mitre_ids,
+            "mitre_techniques": mitre_techniques,
+            "mitre_tactics": mitre_tactics,
+
+            "timestamp": alert_data.get("timestamp"),
+
             "raw_alert": alert,
         }
 
@@ -102,9 +187,7 @@ class WazuhService:
         alert: dict[str, Any],
     ) -> dict[str, Any]:
 
-        normalized = self.normalize_alert(
-            alert
-        )
+        normalized = self.normalize_alert(alert)
 
         return {
             "title": normalized.get("title"),
@@ -116,7 +199,9 @@ class WazuhService:
             "source": "Wazuh",
             "hostname": normalized.get("hostname"),
             "source_ip": normalized.get("source_ip"),
-            "destination_ip": normalized.get("destination_ip"),
+            "destination_ip": normalized.get(
+                "destination_ip"
+            ),
             "username": normalized.get("username"),
         }
 
@@ -130,9 +215,7 @@ class WazuhService:
         a normalized Wazuh alert.
         """
 
-        incident_data = self.build_incident_data(
-            alert
-        )
+        incident_data = self.build_incident_data(alert)
 
         incident_create = IncidentCreate(
             **incident_data
