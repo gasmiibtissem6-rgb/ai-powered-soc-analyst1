@@ -1,12 +1,8 @@
+import traceback
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    status,
-)
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.agents import run_soc_workflow
@@ -27,16 +23,14 @@ def find_recent_duplicate(
     window_minutes: int = 2,
 ):
     """
-    Search for a recently created incident representing
-    the same Wazuh security event.
+    Look for a recently created equivalent Wazuh incident.
 
-    This prevents repeated Wazuh alerts from launching
-    the complete SOC workflow multiple times.
+    The goal is to avoid restarting the full SOC workflow
+    for repeated identical low-level Wazuh alerts.
     """
 
-    created_after = (
-        datetime.utcnow()
-        - timedelta(minutes=window_minutes)
+    created_after = datetime.utcnow() - timedelta(
+        minutes=window_minutes
     )
 
     query = (
@@ -49,29 +43,27 @@ def find_recent_duplicate(
     )
 
     hostname = normalized.get("hostname")
-
     if hostname:
         query = query.filter(
             Incident.hostname == hostname
         )
 
     source_ip = normalized.get("source_ip")
-
     if source_ip:
         query = query.filter(
             Incident.source_ip == source_ip
         )
 
     username = normalized.get("username")
-
     if username:
         query = query.filter(
             Incident.username == username
         )
 
     return (
-        query
-        .order_by(Incident.id.desc())
+        query.order_by(
+            Incident.id.desc()
+        )
         .first()
     )
 
@@ -85,86 +77,114 @@ def receive_wazuh_alert(
     db: Session = Depends(get_db),
 ):
     """
-    Receive a Wazuh alert, normalize it, prevent
-    duplicate incidents, and start the SOC workflow.
+    Receive a Wazuh alert, normalize it, create a SOC incident,
+    and start the multi-agent SOC workflow.
     """
 
     service = WazuhService()
 
+    # --------------------------------------------------
+    # 1. Normalize the Wazuh alert
+    # --------------------------------------------------
+
     try:
+        normalized = service.normalize_alert(alert)
 
-        # ---------------------------------------------
-        # 1. Normalize the real Wazuh alert
-        # ---------------------------------------------
-
-        normalized = service.normalize_alert(
-            alert
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Unable to normalize Wazuh alert: "
+                f"{str(exc)}"
+            ),
         )
 
-        # ---------------------------------------------
-        # 2. Check for recent duplicate
-        # ---------------------------------------------
+    # --------------------------------------------------
+    # 2. Deduplication
+    # --------------------------------------------------
 
+    try:
         duplicate = find_recent_duplicate(
             db=db,
             normalized=normalized,
             window_minutes=2,
         )
 
-        if duplicate:
+    except Exception as exc:
+        print(
+            "\n========== WAZUH DEDUP ERROR =========="
+        )
+        print(
+            f"Error type: {type(exc).__name__}"
+        )
+        print(
+            f"Error message: {str(exc)}"
+        )
+        traceback.print_exc()
+        print(
+            "=======================================\n"
+        )
 
-            return {
-                "status": "duplicate",
-                "message": (
-                    "A recent equivalent Wazuh "
-                    "incident already exists. "
-                    "SOC workflow was not restarted."
+        raise HTTPException(
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail=(
+                "Unable to check Wazuh incident "
+                f"deduplication: {str(exc)}"
+            ),
+        )
+
+    if duplicate:
+        return {
+            "status": "duplicate",
+            "message": (
+                "A recent equivalent Wazuh incident "
+                "already exists. SOC workflow was "
+                "not restarted."
+            ),
+            "wazuh": {
+                "rule_id": normalized.get(
+                    "wazuh_rule_id"
                 ),
-                "wazuh": {
-                    "rule_id": normalized.get(
-                        "wazuh_rule_id"
-                    ),
-                    "rule_level": normalized.get(
-                        "wazuh_rule_level"
-                    ),
-                    "agent_id": normalized.get(
-                        "wazuh_agent_id"
-                    ),
-                    "agent_name": normalized.get(
-                        "wazuh_agent_name"
-                    ),
-                },
-                "incident": {
-                    "id": duplicate.id,
-                    "title": duplicate.title,
-                    "severity": duplicate.severity,
-                    "status": duplicate.status,
-                    "source": duplicate.source,
-                    "hostname": duplicate.hostname,
-                    "source_ip": duplicate.source_ip,
-                    "destination_ip": (
-                        duplicate.destination_ip
-                    ),
-                    "username": duplicate.username,
-                },
-                "workflow": {
-                    "status": "not_started",
-                    "reason": "duplicate_incident",
-                },
-            }
+                "rule_level": normalized.get(
+                    "wazuh_rule_level"
+                ),
+                "agent_id": normalized.get(
+                    "wazuh_agent_id"
+                ),
+                "agent_name": normalized.get(
+                    "wazuh_agent_name"
+                ),
+            },
+            "incident": {
+                "id": duplicate.id,
+                "title": duplicate.title,
+                "severity": duplicate.severity,
+                "status": duplicate.status,
+                "source": duplicate.source,
+                "hostname": duplicate.hostname,
+                "source_ip": duplicate.source_ip,
+                "destination_ip": (
+                    duplicate.destination_ip
+                ),
+                "username": duplicate.username,
+            },
+            "workflow": {
+                "status": "not_started",
+                "reason": "duplicate_incident",
+            },
+        }
 
-        # ---------------------------------------------
-        # 3. Create a new SOC incident
-        # ---------------------------------------------
+    # --------------------------------------------------
+    # 3. Create incident + start SOC workflow
+    # --------------------------------------------------
 
+    try:
         incident = service.create_incident_from_alert(
             db=db,
             alert=alert,
         )
-
-        # ---------------------------------------------
-        # 4. Start the SOC workflow
-        # ---------------------------------------------
 
         workflow_result = run_soc_workflow(
             db=db,
@@ -173,6 +193,20 @@ def receive_wazuh_alert(
         )
 
     except Exception as exc:
+        print(
+            "\n========== WAZUH WORKFLOW ERROR =========="
+        )
+        print(
+            f"Error type: {type(exc).__name__}"
+        )
+        print(
+            f"Error message: {str(exc)}"
+        )
+        traceback.print_exc()
+        print(
+            "==========================================\n"
+        )
+
         raise HTTPException(
             status_code=(
                 status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -183,9 +217,9 @@ def receive_wazuh_alert(
             ),
         )
 
-    # ---------------------------------------------
-    # 5. API response
-    # ---------------------------------------------
+    # --------------------------------------------------
+    # 4. API response
+    # --------------------------------------------------
 
     return {
         "status": "processed",
@@ -227,7 +261,9 @@ def receive_wazuh_alert(
             "source": incident.source,
             "hostname": incident.hostname,
             "source_ip": incident.source_ip,
-            "destination_ip": incident.destination_ip,
+            "destination_ip": (
+                incident.destination_ip
+            ),
             "username": incident.username,
         },
         "workflow": workflow_result,
