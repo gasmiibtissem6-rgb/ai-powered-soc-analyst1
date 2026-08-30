@@ -42,4 +42,9 @@ class IncidentResponse(IncidentBase):
     id: int
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    workflow_status: str
+    workflow_error: Optional[str] = None
+
+    model_config = ConfigDict(
+        from_attributes=True
+    )

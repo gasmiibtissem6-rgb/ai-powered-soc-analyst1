@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -23,9 +23,13 @@ router = APIRouter(
     response_model=List[IncidentResponse],
 )
 def get_incidents(
+    workflow_status: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    return IncidentService.get_incidents(db)
+    return IncidentService.get_incidents(
+        db=db,
+        workflow_status=workflow_status,
+    )
 
 
 @router.post(
@@ -37,7 +41,10 @@ def create_incident(
     incident_data: IncidentCreate,
     db: Session = Depends(get_db),
 ):
-    return IncidentService.create_incident(db, incident_data)
+    return IncidentService.create_incident(
+        db,
+        incident_data,
+    )
 
 
 @router.get(
@@ -48,7 +55,10 @@ def get_incident(
     incident_id: int,
     db: Session = Depends(get_db),
 ):
-    incident = IncidentService.get_incident(db, incident_id)
+    incident = IncidentService.get_incident(
+        db,
+        incident_id,
+    )
 
     if not incident:
         raise HTTPException(
@@ -91,7 +101,10 @@ def delete_incident(
     incident_id: int,
     db: Session = Depends(get_db),
 ):
-    deleted = IncidentService.delete_incident(db, incident_id)
+    deleted = IncidentService.delete_incident(
+        db,
+        incident_id,
+    )
 
     if not deleted:
         raise HTTPException(
