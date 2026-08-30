@@ -685,9 +685,7 @@ def build_soar_action(
 
     if "isolate" in recommendation_lower:
 
-        action_type = (
-            "isolate_endpoint"
-        )
+        action_type = "isolate_endpoint"
 
     elif (
         "block" in recommendation_lower
@@ -700,8 +698,7 @@ def build_soar_action(
         "disable" in recommendation_lower
         and (
             "user" in recommendation_lower
-            or "account"
-            in recommendation_lower
+            or "account" in recommendation_lower
         )
     ):
 
@@ -709,13 +706,108 @@ def build_soar_action(
 
     elif (
         "notify" in recommendation_lower
-        or "notification"
-        in recommendation_lower
+        or "notification" in recommendation_lower
     ):
 
-        action_type = (
-            "send_notification"
+        action_type = "send_notification"
+
+    # -----------------------------------------------------
+    # Target
+    # -----------------------------------------------------
+
+    if action_type == "isolate_endpoint":
+
+        target = (
+            incident.get("hostname")
+            or incident.get("endpoint")
+            or incident.get("device_name")
+            or incident.get("target")
+            or "unknown-endpoint"
         )
+
+    elif action_type == "block_ip":
+
+        target = (
+            incident.get("ip_address")
+            or incident.get("source_ip")
+            or incident.get("src_ip")
+            or incident.get("ip")
+            or incident.get("target")
+            or "unknown-ip"
+        )
+
+        # -------------------------------------------------
+        # Safety policy before SOAR action creation
+        # -------------------------------------------------
+
+        try:
+            from app.services.soar_service import SOARService
+
+            if not SOARService.is_safe_ip_target(
+                target
+            ):
+                action_type = "create_ticket"
+
+                target = (
+                    incident.get("hostname")
+                    or (
+                        f"incident-"
+                        f"{incident.get('id', 'unknown')}"
+                    )
+                )
+
+        except Exception:
+            action_type = "create_ticket"
+
+            target = (
+                incident.get("hostname")
+                or (
+                    f"incident-"
+                    f"{incident.get('id', 'unknown')}"
+                )
+            )
+
+    elif action_type == "disable_user":
+
+        target = (
+            incident.get("username")
+            or incident.get("user")
+            or incident.get("account")
+            or incident.get("target")
+            or "unknown-user"
+        )
+
+    elif action_type == "send_notification":
+
+        target = (
+            incident.get(
+                "notification_target"
+            )
+            or "soc-team"
+        )
+
+    else:
+
+        target = (
+            incident.get("hostname")
+            or incident.get("endpoint")
+            or incident.get("target")
+            or (
+                f"incident-"
+                f"{incident.get('id', 'unknown')}"
+            )
+        )
+
+    return {
+        "incident_id": incident.get("id"),
+        "action_type": action_type,
+        "target": target,
+        "requires_approval": True,
+        "status": "proposed",
+    }
+
+    
+    
 
     # -----------------------------------------------------
     # Target
