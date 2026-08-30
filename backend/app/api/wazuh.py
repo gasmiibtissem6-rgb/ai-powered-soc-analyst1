@@ -25,8 +25,8 @@ def find_recent_duplicate(
     """
     Look for a recently created equivalent Wazuh incident.
 
-    The goal is to avoid restarting the full SOC workflow
-    for repeated identical low-level Wazuh alerts.
+    This prevents restarting the complete SOC workflow
+    for repeated equivalent Wazuh alerts.
     """
 
     created_after = datetime.utcnow() - timedelta(
@@ -77,20 +77,40 @@ def receive_wazuh_alert(
     db: Session = Depends(get_db),
 ):
     """
-    Receive a Wazuh alert, normalize it, create a SOC incident,
-    and start the multi-agent SOC workflow.
+    Receive a Wazuh alert.
+
+    Steps:
+    1. Normalize the Wazuh alert.
+    2. Check for a recent duplicate.
+    3. Create a SOC incident.
+    4. Start the multi-agent SOC workflow.
+    5. Keep the incident even if the AI workflow fails.
     """
 
     service = WazuhService()
 
-    # --------------------------------------------------
-    # 1. Normalize the Wazuh alert
-    # --------------------------------------------------
+    # ==================================================
+    # 1. Normalize Wazuh alert
+    # ==================================================
 
     try:
         normalized = service.normalize_alert(alert)
 
     except Exception as exc:
+        print(
+            "\n========== WAZUH NORMALIZATION ERROR =========="
+        )
+        print(
+            f"Error type: {type(exc).__name__}"
+        )
+        print(
+            f"Error message: {str(exc)}"
+        )
+        traceback.print_exc()
+        print(
+            "===============================================\n"
+        )
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
@@ -99,9 +119,9 @@ def receive_wazuh_alert(
             ),
         )
 
-    # --------------------------------------------------
+    # ==================================================
     # 2. Deduplication
-    # --------------------------------------------------
+    # ==================================================
 
     try:
         duplicate = find_recent_duplicate(
@@ -176,9 +196,9 @@ def receive_wazuh_alert(
             },
         }
 
-    # --------------------------------------------------
-    # 3. Create incident + start SOC workflow
-    # --------------------------------------------------
+    # ==================================================
+    # 3. Create incident
+    # ==================================================
 
     try:
         incident = service.create_incident_from_alert(
@@ -186,6 +206,36 @@ def receive_wazuh_alert(
             alert=alert,
         )
 
+    except Exception as exc:
+        print(
+            "\n========== WAZUH INCIDENT ERROR =========="
+        )
+        print(
+            f"Error type: {type(exc).__name__}"
+        )
+        print(
+            f"Error message: {str(exc)}"
+        )
+        traceback.print_exc()
+        print(
+            "==========================================\n"
+        )
+
+        raise HTTPException(
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail=(
+                "Unable to create incident from "
+                f"Wazuh alert: {str(exc)}"
+            ),
+        )
+
+    # ==================================================
+    # 4. Start SOC multi-agent workflow
+    # ==================================================
+
+    try:
         workflow_result = run_soc_workflow(
             db=db,
             incident=incident,
@@ -207,19 +257,72 @@ def receive_wazuh_alert(
             "==========================================\n"
         )
 
-        raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
-            detail=(
-                "Unable to process Wazuh alert: "
-                f"{str(exc)}"
-            ),
-        )
+        # IMPORTANT:
+        # The Wazuh alert has already been converted
+        # into an incident.
+        #
+        # A failure of Groq / LLM / LangGraph must NOT
+        # make Wazuh believe that alert ingestion failed.
+        #
+        # The API therefore keeps HTTP 201 and reports
+        # that only the SOC workflow failed.
 
-    # --------------------------------------------------
-    # 4. API response
-    # --------------------------------------------------
+        return {
+            "status": "processed_with_workflow_error",
+            "message": (
+                "Wazuh alert was converted to an "
+                "incident successfully, but the SOC "
+                "workflow could not be completed."
+            ),
+            "wazuh": {
+                "rule_id": normalized.get(
+                    "wazuh_rule_id"
+                ),
+                "rule_level": normalized.get(
+                    "wazuh_rule_level"
+                ),
+                "agent_id": normalized.get(
+                    "wazuh_agent_id"
+                ),
+                "agent_name": normalized.get(
+                    "wazuh_agent_name"
+                ),
+                "agent_ip": normalized.get(
+                    "wazuh_agent_ip"
+                ),
+                "mitre_ids": normalized.get(
+                    "mitre_ids"
+                ),
+                "mitre_techniques": normalized.get(
+                    "mitre_techniques"
+                ),
+                "mitre_tactics": normalized.get(
+                    "mitre_tactics"
+                ),
+            },
+            "incident": {
+                "id": incident.id,
+                "title": incident.title,
+                "severity": incident.severity,
+                "status": incident.status,
+                "source": incident.source,
+                "hostname": incident.hostname,
+                "source_ip": incident.source_ip,
+                "destination_ip": (
+                    incident.destination_ip
+                ),
+                "username": incident.username,
+            },
+            "workflow": {
+                "status": "error",
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+            },
+        }
+
+    # ==================================================
+    # 5. Successful API response
+    # ==================================================
 
     return {
         "status": "processed",
