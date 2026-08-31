@@ -29,6 +29,8 @@ class SOCState(TypedDict, total=False):
 
     incident: dict
 
+    correlated_incidents: list[dict]
+
     triage: dict
 
     ml_analysis: dict
@@ -239,7 +241,6 @@ def threat_intelligence_agent(
 
     for ip_address in extracted_ips:
 
-        # Avoid checking the same IP twice
         if ip_address in analyzed_ips:
             continue
 
@@ -289,6 +290,11 @@ def investigation_agent(
     incident = state.get(
         "incident",
         {},
+    )
+
+    correlated_incidents = state.get(
+        "correlated_incidents",
+        [],
     )
 
     threat_intelligence = state.get(
@@ -386,9 +392,112 @@ def investigation_agent(
             }
         ]
 
+    # -----------------------------------------------------
+    # Add correlated multi-source evidence
+    # -----------------------------------------------------
+
+    correlation_context = []
+
+    for correlated in correlated_incidents:
+
+        if not isinstance(
+            correlated,
+            dict,
+        ):
+            continue
+
+        correlation_context.append(
+            {
+                "source": "correlated_incident",
+
+                "incident_id": (
+                    correlated.get(
+                        "id"
+                    )
+                ),
+
+                "sensor_source": (
+                    correlated.get(
+                        "source"
+                    )
+                ),
+
+                "title": (
+                    correlated.get(
+                        "title"
+                    )
+                ),
+
+                "description": (
+                    correlated.get(
+                        "description"
+                    )
+                ),
+
+                "severity": (
+                    correlated.get(
+                        "severity"
+                    )
+                ),
+
+                "status": (
+                    correlated.get(
+                        "status"
+                    )
+                ),
+
+                "hostname": (
+                    correlated.get(
+                        "hostname"
+                    )
+                ),
+
+                "source_ip": (
+                    correlated.get(
+                        "source_ip"
+                    )
+                ),
+
+                "destination_ip": (
+                    correlated.get(
+                        "destination_ip"
+                    )
+                ),
+
+                "username": (
+                    correlated.get(
+                        "username"
+                    )
+                ),
+
+                "workflow_status": (
+                    correlated.get(
+                        "workflow_status"
+                    )
+                ),
+
+                "correlation_id": (
+                    correlated.get(
+                        "correlation_id"
+                    )
+                ),
+
+                "created_at": (
+                    correlated.get(
+                        "created_at"
+                    )
+                ),
+            }
+        )
+
+    # -----------------------------------------------------
+    # Final investigation context
+    # -----------------------------------------------------
+
     investigation_context = (
         rag_context
         + ml_context
+        + correlation_context
     )
 
     # -----------------------------------------------------
@@ -433,6 +542,42 @@ def investigation_agent(
 
     result["ml_analysis"] = (
         ml_analysis
+    )
+
+    # -----------------------------------------------------
+    # Add correlation information to investigation result
+    # -----------------------------------------------------
+
+    result["correlation_id"] = (
+        incident.get(
+            "correlation_id"
+        )
+    )
+
+    result["correlated_incident_count"] = (
+        len(
+            correlated_incidents
+        )
+    )
+
+    result["correlated_sources"] = sorted(
+        {
+            str(
+                item.get(
+                    "source"
+                )
+            )
+            for item in correlated_incidents
+            if (
+                isinstance(
+                    item,
+                    dict,
+                )
+                and item.get(
+                    "source"
+                )
+            )
+        }
     )
 
     # -----------------------------------------------------
@@ -485,7 +630,11 @@ def investigation_agent(
     return {
         "investigation": result,
 
-        "rag_context": rag_context,
+        # Important:
+        # Preserve RAG + ML + correlated evidence.
+        "rag_context": (
+            investigation_context
+        ),
 
         "mitre_validation": (
             mitre_validation
@@ -1066,10 +1215,6 @@ def report_agent(
             )
         ),
 
-        # -------------------------------------------------
-        # MACHINE LEARNING
-        # -------------------------------------------------
-
         "ml_status": (
             ml_analysis.get(
                 "status"
@@ -1114,10 +1259,6 @@ def report_agent(
             ),
         },
 
-        # -------------------------------------------------
-        # MITRE
-        # -------------------------------------------------
-
         "mitre_technique": (
             mitre_validation.get(
                 "technique_id"
@@ -1135,10 +1276,6 @@ def report_agent(
                 "valid"
             )
         ),
-
-        # -------------------------------------------------
-        # RESPONSE
-        # -------------------------------------------------
 
         "recommendation": (
             investigation.get(
@@ -1179,6 +1316,26 @@ def report_agent(
 
         "rag_sources": (
             rag_sources
+        ),
+
+        "correlation_id": (
+            investigation.get(
+                "correlation_id"
+            )
+        ),
+
+        "correlated_incident_count": (
+            investigation.get(
+                "correlated_incident_count",
+                0,
+            )
+        ),
+
+        "correlated_sources": (
+            investigation.get(
+                "correlated_sources",
+                [],
+            )
         ),
     }
 

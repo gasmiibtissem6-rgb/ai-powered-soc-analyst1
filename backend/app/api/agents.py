@@ -250,9 +250,7 @@ def save_ai_analysis(
         db.rollback()
 
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=(
                 "Unable to save AI analysis: "
                 f"{str(exc)}"
@@ -421,9 +419,7 @@ def save_soc_report(
         db.rollback()
 
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=(
                 "Unable to save SOC report: "
                 f"{str(exc)}"
@@ -546,9 +542,7 @@ def save_soar_action(
         db.rollback()
 
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=(
                 "Unable to save SOAR action: "
                 f"{str(exc)}"
@@ -563,12 +557,70 @@ def save_soar_action(
 # =========================================================
 
 def build_initial_state(
+    db: Session,
     incident: Incident,
     request: Optional[AnalyzeIncidentRequest] = None,
 ) -> dict:
     """
     Build the initial LangGraph state from an Incident.
+
+    If this incident belongs to a correlation group,
+    also include the other incidents in that group so
+    the SOC workflow can use multi-source evidence.
     """
+
+    correlated_incidents = []
+
+    # -----------------------------------------------------
+    # Load other incidents from same correlation group
+    # -----------------------------------------------------
+
+    if incident.correlation_id:
+
+        related_incidents = (
+            db.query(Incident)
+            .filter(
+                Incident.correlation_id
+                == incident.correlation_id,
+
+                Incident.id
+                != incident.id,
+            )
+            .order_by(
+                Incident.created_at.asc(),
+                Incident.id.asc(),
+            )
+            .all()
+        )
+
+        correlated_incidents = [
+            {
+                "id": item.id,
+                "title": item.title,
+                "description": item.description,
+                "severity": item.severity,
+                "status": item.status,
+                "source": item.source,
+                "hostname": item.hostname,
+                "source_ip": item.source_ip,
+                "destination_ip": item.destination_ip,
+                "username": item.username,
+                "workflow_status": item.workflow_status,
+                "workflow_error": item.workflow_error,
+                "correlation_id": item.correlation_id,
+
+                "created_at": (
+                    item.created_at.isoformat()
+                    if item.created_at
+                    else None
+                ),
+            }
+            for item in related_incidents
+        ]
+
+    # -----------------------------------------------------
+    # Build initial LangGraph state
+    # -----------------------------------------------------
 
     return {
         "incident": {
@@ -587,12 +639,20 @@ def build_initial_state(
             ),
             "username": incident.username,
 
+            "correlation_id": (
+                incident.correlation_id
+            ),
+
             "ml_features": (
                 request.ml_features
                 if request
                 else None
             ),
-        }
+        },
+
+        "correlated_incidents": (
+            correlated_incidents
+        ),
     }
 
 
@@ -622,6 +682,11 @@ def build_waiting_response(
 
         "incident": result.get(
             "incident"
+        ),
+
+        "correlated_incidents": result.get(
+            "correlated_incidents",
+            [],
         ),
 
         "triage": result.get(
@@ -689,6 +754,11 @@ def build_completed_response(
 
         "incident": result.get(
             "incident"
+        ),
+
+        "correlated_incidents": result.get(
+            "correlated_incidents",
+            [],
         ),
 
         "triage": result.get(
@@ -788,6 +858,7 @@ def run_soc_workflow(
     # -----------------------------------------------------
 
     initial_state = build_initial_state(
+        db=db,
         incident=incident,
         request=request,
     )
@@ -946,9 +1017,7 @@ def analyze_incident_with_agents(
 
     if not incident:
         raise HTTPException(
-            status_code=(
-                status.HTTP_404_NOT_FOUND
-            ),
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Incident not found",
         )
 
@@ -987,9 +1056,7 @@ def resume_soc_workflow(
 
     except Exception as exc:
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=(
                 "Unable to read workflow state: "
                 f"{str(exc)}"
@@ -1002,9 +1069,7 @@ def resume_soc_workflow(
 
     if not snapshot.values:
         raise HTTPException(
-            status_code=(
-                status.HTTP_404_NOT_FOUND
-            ),
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=(
                 "Workflow not found. "
                 "The checkpoint may have been lost. "
@@ -1022,9 +1087,7 @@ def resume_soc_workflow(
 
     if not incident_state:
         raise HTTPException(
-            status_code=(
-                status.HTTP_409_CONFLICT
-            ),
+            status_code=status.HTTP_409_CONFLICT,
             detail=(
                 "Workflow state is incomplete: "
                 "incident data is missing."
@@ -1037,9 +1100,7 @@ def resume_soc_workflow(
 
     if not incident_id:
         raise HTTPException(
-            status_code=(
-                status.HTTP_409_CONFLICT
-            ),
+            status_code=status.HTTP_409_CONFLICT,
             detail=(
                 "Workflow state is incomplete: "
                 "incident id is missing."
@@ -1056,9 +1117,7 @@ def resume_soc_workflow(
 
     if not db_incident:
         raise HTTPException(
-            status_code=(
-                status.HTTP_404_NOT_FOUND
-            ),
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=(
                 "Incident not found in database."
             ),
@@ -1074,9 +1133,7 @@ def resume_soc_workflow(
 
     if not investigation_state:
         raise HTTPException(
-            status_code=(
-                status.HTTP_409_CONFLICT
-            ),
+            status_code=status.HTTP_409_CONFLICT,
             detail=(
                 "Workflow state is incomplete: "
                 "investigation data is missing."
@@ -1089,9 +1146,7 @@ def resume_soc_workflow(
 
     if not snapshot.next:
         raise HTTPException(
-            status_code=(
-                status.HTTP_409_CONFLICT
-            ),
+            status_code=status.HTTP_409_CONFLICT,
             detail=(
                 "This workflow is not waiting "
                 "for human approval."
