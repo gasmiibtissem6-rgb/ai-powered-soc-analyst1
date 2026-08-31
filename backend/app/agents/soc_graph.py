@@ -179,67 +179,157 @@ def machine_learning_agent(
 def threat_intelligence_agent(
     state: SOCState,
 ) -> dict:
+    """
+    Enrich the primary incident and correlated incidents
+    with Threat Intelligence.
+
+    All unique IP addresses are collected first so the same
+    IP is never queried multiple times.
+    """
 
     incident = state.get(
         "incident",
         {},
     )
 
+    correlated_incidents = state.get(
+        "correlated_incidents",
+        [],
+    )
+
     service = ThreatIntelligenceService()
 
     results = []
+
+    # IPs already processed by Threat Intelligence
     analyzed_ips = set()
 
-    # -----------------------------------------------------
-    # Analyze source_ip directly
-    # -----------------------------------------------------
+    # IPs discovered across all incident sources
+    candidate_ips = set()
 
-    source_ip = incident.get(
+    # =====================================================
+    # 1. PRIMARY INCIDENT
+    # =====================================================
+
+    primary_source_ip = incident.get(
         "source_ip"
     )
 
-    if source_ip:
+    primary_destination_ip = incident.get(
+        "destination_ip"
+    )
 
-        try:
+    if primary_source_ip:
+        candidate_ips.add(
+            primary_source_ip
+        )
 
-            result = service.check_ip(
-                source_ip
-            )
+    if primary_destination_ip:
+        candidate_ips.add(
+            primary_destination_ip
+        )
 
-            results.append(
-                result
-            )
-
-            analyzed_ips.add(
-                source_ip
-            )
-
-        except Exception as exc:
-
-            results.append(
-                {
-                    "ip_address": source_ip,
-                    "error": (
-                        "Threat Intelligence failed: "
-                        f"{str(exc)}"
-                    ),
-                }
-            )
-
-    # -----------------------------------------------------
-    # Analyze IPs present in incident text
-    # -----------------------------------------------------
-
-    text = (
+    primary_text = (
         f"{incident.get('title', '')} "
         f"{incident.get('description', '')}"
     )
 
-    extracted_ips = service.extract_ips(
-        text
-    )
+    try:
+        extracted_primary_ips = (
+            service.extract_ips(
+                primary_text
+            )
+        )
 
-    for ip_address in extracted_ips:
+        for ip_address in extracted_primary_ips:
+
+            if ip_address:
+                candidate_ips.add(
+                    ip_address
+                )
+
+    except Exception as exc:
+
+        print(
+            "Threat Intelligence IP extraction "
+            f"failed for primary incident: {str(exc)}"
+        )
+
+    # =====================================================
+    # 2. CORRELATED INCIDENTS
+    # =====================================================
+
+    for correlated in correlated_incidents:
+
+        if not isinstance(
+            correlated,
+            dict,
+        ):
+            continue
+
+        correlated_source_ip = (
+            correlated.get(
+                "source_ip"
+            )
+        )
+
+        correlated_destination_ip = (
+            correlated.get(
+                "destination_ip"
+            )
+        )
+
+        if correlated_source_ip:
+            candidate_ips.add(
+                correlated_source_ip
+            )
+
+        if correlated_destination_ip:
+            candidate_ips.add(
+                correlated_destination_ip
+            )
+
+        correlated_text = (
+            f"{correlated.get('title', '')} "
+            f"{correlated.get('description', '')}"
+        )
+
+        try:
+
+            extracted_correlated_ips = (
+                service.extract_ips(
+                    correlated_text
+                )
+            )
+
+            for ip_address in (
+                extracted_correlated_ips
+            ):
+
+                if ip_address:
+                    candidate_ips.add(
+                        ip_address
+                    )
+
+        except Exception as exc:
+
+            print(
+                "Threat Intelligence IP extraction "
+                "failed for correlated incident "
+                f"{correlated.get('id')}: "
+                f"{str(exc)}"
+            )
+
+    # =====================================================
+    # 3. THREAT INTELLIGENCE LOOKUPS
+    # =====================================================
+
+    for ip_address in sorted(
+        candidate_ips
+    ):
+
+        if not ip_address:
+            continue
 
         if ip_address in analyzed_ips:
             continue
@@ -250,12 +340,93 @@ def threat_intelligence_agent(
                 ip_address
             )
 
+            # Add useful provenance information
+            if isinstance(
+                result,
+                dict,
+            ):
+
+                result["observed_in"] = []
+
+                if (
+                    ip_address
+                    == incident.get(
+                        "source_ip"
+                    )
+                    or ip_address
+                    == incident.get(
+                        "destination_ip"
+                    )
+                    or ip_address
+                    in primary_text
+                ):
+
+                    result[
+                        "observed_in"
+                    ].append(
+                        {
+                            "incident_id": (
+                                incident.get(
+                                    "id"
+                                )
+                            ),
+                            "source": (
+                                incident.get(
+                                    "source"
+                                )
+                            ),
+                            "role": "primary",
+                        }
+                    )
+
+                for correlated in (
+                    correlated_incidents
+                ):
+
+                    if not isinstance(
+                        correlated,
+                        dict,
+                    ):
+                        continue
+
+                    correlated_text = (
+                        f"{correlated.get('title', '')} "
+                        f"{correlated.get('description', '')}"
+                    )
+
+                    if (
+                        ip_address
+                        == correlated.get(
+                            "source_ip"
+                        )
+                        or ip_address
+                        == correlated.get(
+                            "destination_ip"
+                        )
+                        or ip_address
+                        in correlated_text
+                    ):
+
+                        result[
+                            "observed_in"
+                        ].append(
+                            {
+                                "incident_id": (
+                                    correlated.get(
+                                        "id"
+                                    )
+                                ),
+                                "source": (
+                                    correlated.get(
+                                        "source"
+                                    )
+                                ),
+                                "role": "correlated",
+                            }
+                        )
+
             results.append(
                 result
-            )
-
-            analyzed_ips.add(
-                ip_address
             )
 
         except Exception as exc:
@@ -263,6 +434,7 @@ def threat_intelligence_agent(
             results.append(
                 {
                     "ip_address": ip_address,
+
                     "error": (
                         "Threat Intelligence failed: "
                         f"{str(exc)}"
@@ -270,8 +442,20 @@ def threat_intelligence_agent(
                 }
             )
 
+        finally:
+
+            analyzed_ips.add(
+                ip_address
+            )
+
+    # =====================================================
+    # 4. RESULT
+    # =====================================================
+
     return {
-        "threat_intelligence": results,
+        "threat_intelligence": (
+            results
+        ),
 
         "agent_trace": [
             "Threat Intelligence"
