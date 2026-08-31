@@ -105,6 +105,8 @@ def is_llm_rate_limit_error(exc: Exception) -> bool:
 # =========================================================
 # SAVE AI ANALYSIS
 # =========================================================
+# SAVE AI ANALYSIS
+# =========================================================
 
 def save_ai_analysis(
     db: Session,
@@ -124,6 +126,11 @@ def save_ai_analysis(
         return existing_analysis
 
     incident = result.get("incident") or {}
+    correlated_incidents = (
+        result.get("correlated_incidents")
+        or []
+    )
+
     triage = result.get("triage") or {}
     investigation = result.get("investigation") or {}
     mitre_validation = result.get("mitre_validation") or {}
@@ -132,6 +139,10 @@ def save_ai_analysis(
     report = result.get("report") or {}
     rag_context = result.get("rag_context") or []
     agent_trace = result.get("agent_trace") or []
+
+    # -----------------------------------------------------
+    # RAG SOURCES
+    # -----------------------------------------------------
 
     rag_sources = [
         item.get("source")
@@ -142,6 +153,10 @@ def save_ai_analysis(
         )
     ]
 
+    # -----------------------------------------------------
+    # RISK
+    # -----------------------------------------------------
+
     risk_level = investigation.get(
         "risk_level"
     )
@@ -151,6 +166,10 @@ def save_ai_analysis(
             "severity",
             "unknown",
         )
+
+    # -----------------------------------------------------
+    # HUMAN REVIEW
+    # -----------------------------------------------------
 
     human_approval_required = human_review.get(
         "required",
@@ -169,6 +188,10 @@ def save_ai_analysis(
         "comment"
     )
 
+    # -----------------------------------------------------
+    # RESPONSE
+    # -----------------------------------------------------
+
     response_status = response.get(
         "status"
     )
@@ -178,6 +201,66 @@ def save_ai_analysis(
             "response_status",
             "not_executed",
         )
+
+    # -----------------------------------------------------
+    # MULTI-SOURCE CORRELATION
+    # -----------------------------------------------------
+
+    correlation_id = incident.get(
+        "correlation_id"
+    )
+
+    correlation_confidence = (
+        investigation.get(
+            "correlation_confidence"
+        )
+        or report.get(
+            "correlation_confidence"
+        )
+        or result.get(
+            "correlation_confidence"
+        )
+    )
+
+    correlated_sources = []
+
+    primary_source = incident.get(
+        "source"
+    )
+
+    if primary_source:
+        correlated_sources.append(
+            primary_source
+        )
+
+    for correlated in correlated_incidents:
+
+        if not isinstance(
+            correlated,
+            dict,
+        ):
+            continue
+
+        correlated_source = correlated.get(
+            "source"
+        )
+
+        if (
+            correlated_source
+            and correlated_source
+            not in correlated_sources
+        ):
+            correlated_sources.append(
+                correlated_source
+            )
+
+    correlated_incident_count = len(
+        correlated_incidents
+    )
+
+    # -----------------------------------------------------
+    # DATABASE OBJECT
+    # -----------------------------------------------------
 
     db_analysis = AIAnalysis(
         incident_id=incident.get(
@@ -234,6 +317,22 @@ def save_ai_analysis(
             response_status
         ),
 
+        correlation_id=(
+            correlation_id
+        ),
+
+        correlation_confidence=(
+            correlation_confidence
+        ),
+
+        correlated_incident_count=(
+            correlated_incident_count
+        ),
+
+        correlated_sources=(
+            correlated_sources
+        ),
+
         thread_id=thread_id,
 
         agent_trace=agent_trace,
@@ -250,7 +349,9 @@ def save_ai_analysis(
         db.rollback()
 
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
             detail=(
                 "Unable to save AI analysis: "
                 f"{str(exc)}"
@@ -283,6 +384,11 @@ def save_soc_report(
         return existing_report
 
     incident = result.get("incident") or {}
+    correlated_incidents = (
+        result.get("correlated_incidents")
+        or []
+    )
+
     investigation = result.get("investigation") or {}
     ml_analysis = result.get("ml_analysis") or {}
     mitre_validation = result.get("mitre_validation") or {}
@@ -291,6 +397,10 @@ def save_soc_report(
     report = result.get("report") or {}
     rag_context = result.get("rag_context") or []
     agent_trace = result.get("agent_trace") or []
+
+    # -----------------------------------------------------
+    # RAG SOURCES
+    # -----------------------------------------------------
 
     rag_sources = [
         item.get("source")
@@ -301,23 +411,91 @@ def save_soc_report(
         )
     ]
 
+    # -----------------------------------------------------
+    # MACHINE LEARNING
+    # -----------------------------------------------------
+
     ml_probabilities = {
         "BENIGN": ml_analysis.get(
             "benign_probability"
         ),
+
         "DDoS": ml_analysis.get(
             "ddos_probability"
         ),
+
         "PortScan": ml_analysis.get(
             "portscan_probability"
         ),
+
         "FTP-Patator": ml_analysis.get(
             "ftp_patator_probability"
         ),
+
         "SSH-Patator": ml_analysis.get(
             "ssh_patator_probability"
         ),
     }
+
+    # -----------------------------------------------------
+    # MULTI-SOURCE CORRELATION
+    # -----------------------------------------------------
+
+    correlation_id = incident.get(
+        "correlation_id"
+    )
+
+    correlation_confidence = (
+        report.get(
+            "correlation_confidence"
+        )
+        or investigation.get(
+            "correlation_confidence"
+        )
+        or result.get(
+            "correlation_confidence"
+        )
+    )
+
+    correlated_sources = []
+
+    primary_source = incident.get(
+        "source"
+    )
+
+    if primary_source:
+        correlated_sources.append(
+            primary_source
+        )
+
+    for correlated in correlated_incidents:
+
+        if not isinstance(
+            correlated,
+            dict,
+        ):
+            continue
+
+        correlated_source = correlated.get(
+            "source"
+        )
+
+        if (
+            correlated_source
+            and correlated_source
+            not in correlated_sources
+        ):
+            correlated_sources.append(
+                correlated_source
+            )
+
+    correlated_incident_count = len(
+        correlated_incidents
+    )
+
+    # -----------------------------------------------------
+    # DATABASE OBJECT
+    # -----------------------------------------------------
 
     db_report = SOCReport(
         incident_id=incident.get(
@@ -360,7 +538,9 @@ def save_soc_report(
             "prediction"
         ),
 
-        ml_probabilities=ml_probabilities,
+        ml_probabilities=(
+            ml_probabilities
+        ),
 
         mitre_technique=report.get(
             "mitre_technique",
@@ -405,6 +585,22 @@ def save_soc_report(
             ),
         ),
 
+        correlation_id=(
+            correlation_id
+        ),
+
+        correlation_confidence=(
+            correlation_confidence
+        ),
+
+        correlated_incident_count=(
+            correlated_incident_count
+        ),
+
+        correlated_sources=(
+            correlated_sources
+        ),
+
         rag_sources=rag_sources,
 
         agent_trace=agent_trace,
@@ -419,7 +615,9 @@ def save_soc_report(
         db.rollback()
 
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
             detail=(
                 "Unable to save SOC report: "
                 f"{str(exc)}"
@@ -427,8 +625,6 @@ def save_soc_report(
         )
 
     return db_report
-
-
 # =========================================================
 # SAVE SOAR ACTION
 # =========================================================

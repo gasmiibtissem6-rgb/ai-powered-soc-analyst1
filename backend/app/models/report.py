@@ -129,6 +129,32 @@ class SOCReport(Base):
     )
 
     # =====================================================
+    # MULTI-SOURCE CORRELATION
+    # =====================================================
+
+    correlation_id = Column(
+        String(100),
+        nullable=True,
+        index=True,
+    )
+
+    correlation_confidence = Column(
+        String(50),
+        nullable=True,
+    )
+
+    correlated_incident_count = Column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    correlated_sources = Column(
+        JSONB,
+        nullable=True,
+    )
+
+    # =====================================================
     # RAG + AGENTS
     # =====================================================
 
