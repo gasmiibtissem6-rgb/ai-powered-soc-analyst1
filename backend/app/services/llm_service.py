@@ -2,7 +2,7 @@ import json
 import re
 from typing import Optional
 
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 
 from app.core.config import settings
 
@@ -153,33 +153,83 @@ Never return placeholder values such as:
 - "complete remediation actions adapted to the incident"
 
 Return JSON only.
-
-Return only the JSON object.
 """
 
         # =====================================================
         # 4. CALL LLM
         # =====================================================
 
-        response = self.client.chat.completions.create(
-            model=settings.LLM_MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a SOC cybersecurity analyst. "
-                        "Use incident evidence, threat intelligence "
-                        "and SOC knowledge base context. "
-                        "Return only one complete JSON object."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": prompt,
-                },
-            ],
-            temperature=0.1,
-        )
+        try:
+            response = self.client.chat.completions.create(
+                model=settings.LLM_MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a SOC cybersecurity analyst. "
+                            "Use incident evidence, threat intelligence "
+                            "and SOC knowledge base context. "
+                            "Return only one complete JSON object."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt,
+                    },
+                ],
+                temperature=0.1,
+            )
+
+        except RateLimitError as exc:
+            # -------------------------------------------------
+            # GROQ / LLM RATE LIMIT
+            # -------------------------------------------------
+            #
+            # Do not automatically retry here.
+            #
+            # A daily token limit may require waiting several
+            # minutes. Automatic retries could consume more
+            # tokens and keep the FastAPI request blocked.
+            # -------------------------------------------------
+
+            retry_after = None
+
+            response_obj = getattr(
+                exc,
+                "response",
+                None,
+            )
+
+            if response_obj is not None:
+                headers = getattr(
+                    response_obj,
+                    "headers",
+                    {},
+                )
+
+                if headers:
+                    retry_after = headers.get(
+                        "retry-after"
+                    )
+
+            message = (
+                "LLM_RATE_LIMITED: Groq token limit reached."
+            )
+
+            if retry_after:
+                message += (
+                    f" Retry after approximately "
+                    f"{retry_after} seconds."
+                )
+
+            raise RuntimeError(
+                message
+            ) from exc
+
+        except Exception as exc:
+            raise RuntimeError(
+                f"LLM_REQUEST_FAILED: {exc}"
+            ) from exc
 
         # =====================================================
         # 5. GET RESPONSE CONTENT
@@ -212,7 +262,6 @@ Return only the JSON object.
         # =====================================================
 
         decoder = json.JSONDecoder()
-
         valid_objects = []
 
         for index, char in enumerate(content):
@@ -281,7 +330,6 @@ Return only the JSON object.
             )
         ).lower().strip()
 
-        # Variantes possibles produites par le LLM
         risk_mapping = {
             "info": "low",
             "informational": "low",
@@ -313,11 +361,9 @@ Return only the JSON object.
                 severity
             ).lower().strip()
 
-            incident_severity = (
-                risk_mapping.get(
-                    incident_severity,
-                    incident_severity,
-                )
+            incident_severity = risk_mapping.get(
+                incident_severity,
+                incident_severity,
             )
 
             if incident_severity in allowed_risks:
@@ -328,10 +374,6 @@ Return only the JSON object.
         result["risk_level"] = risk
 
         # =====================================================
-        # 10. CLEAN OTHER FIELDS
-        # =====================================================
-
-                # =====================================================
         # 10. CLEAN AND VALIDATE TEXT FIELDS
         # =====================================================
 
@@ -349,9 +391,10 @@ Return only the JSON object.
             if value is None:
                 result[field] = ""
             else:
-                result[field] = str(value).strip()
+                result[field] = str(
+                    value
+                ).strip()
 
-        # Valeurs que le LLM ne doit jamais renvoyer
         invalid_placeholders = {
             "",
             "...",
@@ -369,9 +412,9 @@ Return only the JSON object.
             "complete remediation actions adapted to the incident",
         }
 
-        # -----------------------------------------------------
-        # SUMMARY FALLBACK
-        # -----------------------------------------------------
+        # =====================================================
+        # 11. SUMMARY FALLBACK
+        # =====================================================
 
         if result["summary"].lower() in invalid_placeholders:
             result["summary"] = (
@@ -379,9 +422,9 @@ Return only the JSON object.
                 f"{title}. {description}"
             )
 
-        # -----------------------------------------------------
-        # EXPLANATION FALLBACK
-        # -----------------------------------------------------
+        # =====================================================
+        # 12. EXPLANATION FALLBACK
+        # =====================================================
 
         if result["explanation"].lower() in invalid_placeholders:
 
@@ -401,9 +444,9 @@ Return only the JSON object.
                     "authentication, network and security logs."
                 )
 
-        # -----------------------------------------------------
-        # RECOMMENDATION FALLBACK
-        # -----------------------------------------------------
+        # =====================================================
+        # 13. RECOMMENDATION FALLBACK
+        # =====================================================
 
         if result["recommendation"].lower() in invalid_placeholders:
             result["recommendation"] = (
@@ -413,9 +456,9 @@ Return only the JSON object.
                 "containment actions."
             )
 
-        # -----------------------------------------------------
-        # MITRE FALLBACK
-        # -----------------------------------------------------
+        # =====================================================
+        # 14. MITRE FALLBACK
+        # =====================================================
 
         if result["mitre_technique"].lower() in invalid_placeholders:
 
@@ -431,71 +474,21 @@ Return only the JSON object.
                 result["mitre_technique"] = (
                     "T1110 - Brute Force"
                 )
+
+            elif (
+                "port scan" in incident_text
+                or "network scan" in incident_text
+                or "nmap" in incident_text
+            ):
+                result["mitre_technique"] = (
+                    "T1046 - Network Service Discovery"
+                )
+
             else:
                 result["mitre_technique"] = ""
 
         # =====================================================
-        # 11. RETURN
-        # =====================================================
-
-        return result
-
-        for field in text_fields:
-
-            value = result.get(
-                field
-            )
-
-            if value is None:
-                result[field] = ""
-
-            else:
-                result[field] = str(
-                    value
-                ).strip()
-
-        # Si le modèle renvoie encore "..."
-        # on évite de conserver un placeholder vide.
-        if result["summary"] in {
-            "",
-            "...",
-        }:
-            result["summary"] = (
-                f"Security incident detected: {title}."
-            )
-
-        if result["explanation"] in {
-            "",
-            "...",
-        }:
-            result["explanation"] = (
-                "The incident requires further investigation "
-                "using available security telemetry."
-            )
-
-        if result["recommendation"] in {
-            "",
-            "...",
-        }:
-            result["recommendation"] = (
-                "Review authentication, network and security logs "
-                "and validate the source of the activity before "
-                "applying containment actions."
-            )
-
-        if result["mitre_technique"] in {
-            "",
-            "...",
-        }:
-            result["mitre_technique"] = (
-                "T1110 - Brute Force"
-                if "login" in title.lower()
-                or "failed" in description.lower()
-                else ""
-            )
-
-        # =====================================================
-        # 11. RETURN
+        # 15. RETURN
         # =====================================================
 
         return result

@@ -78,6 +78,31 @@ def update_incident_workflow_status(
 
 
 # =========================================================
+# WORKFLOW ERROR CLASSIFICATION
+# =========================================================
+
+def is_llm_rate_limit_error(exc: Exception) -> bool:
+    """
+    Detect a temporary LLM/Groq rate-limit error.
+    """
+
+    error_text = str(exc).lower()
+
+    indicators = [
+        "llm_rate_limited",
+        "rate_limit_exceeded",
+        "rate limit reached",
+        "error code: 429",
+        "too many requests",
+    ]
+
+    return any(
+        indicator in error_text
+        for indicator in indicators
+    )
+
+
+# =========================================================
 # SAVE AI ANALYSIS
 # =========================================================
 
@@ -98,50 +123,15 @@ def save_ai_analysis(
     if existing_analysis:
         return existing_analysis
 
-    incident = (
-        result.get("incident")
-        or {}
-    )
-
-    triage = (
-        result.get("triage")
-        or {}
-    )
-
-    investigation = (
-        result.get("investigation")
-        or {}
-    )
-
-    mitre_validation = (
-        result.get("mitre_validation")
-        or {}
-    )
-
-    human_review = (
-        result.get("human_review")
-        or {}
-    )
-
-    response = (
-        result.get("response")
-        or {}
-    )
-
-    report = (
-        result.get("report")
-        or {}
-    )
-
-    rag_context = (
-        result.get("rag_context")
-        or []
-    )
-
-    agent_trace = (
-        result.get("agent_trace")
-        or []
-    )
+    incident = result.get("incident") or {}
+    triage = result.get("triage") or {}
+    investigation = result.get("investigation") or {}
+    mitre_validation = result.get("mitre_validation") or {}
+    human_review = result.get("human_review") or {}
+    response = result.get("response") or {}
+    report = result.get("report") or {}
+    rag_context = result.get("rag_context") or []
+    agent_trace = result.get("agent_trace") or []
 
     rag_sources = [
         item.get("source")
@@ -162,29 +152,21 @@ def save_ai_analysis(
             "unknown",
         )
 
-    human_approval_required = (
-        human_review.get(
-            "required",
-            False,
-        )
+    human_approval_required = human_review.get(
+        "required",
+        False,
     )
 
-    human_approved = (
-        human_review.get(
-            "approved"
-        )
+    human_approved = human_review.get(
+        "approved"
     )
 
-    human_review_status = (
-        human_review.get(
-            "status"
-        )
+    human_review_status = human_review.get(
+        "status"
     )
 
-    human_comment = (
-        human_review.get(
-            "comment"
-        )
+    human_comment = human_review.get(
+        "comment"
     )
 
     response_status = response.get(
@@ -302,50 +284,15 @@ def save_soc_report(
     if existing_report:
         return existing_report
 
-    incident = (
-        result.get("incident")
-        or {}
-    )
-
-    investigation = (
-        result.get("investigation")
-        or {}
-    )
-
-    ml_analysis = (
-        result.get("ml_analysis")
-        or {}
-    )
-
-    mitre_validation = (
-        result.get("mitre_validation")
-        or {}
-    )
-
-    human_review = (
-        result.get("human_review")
-        or {}
-    )
-
-    response = (
-        result.get("response")
-        or {}
-    )
-
-    report = (
-        result.get("report")
-        or {}
-    )
-
-    rag_context = (
-        result.get("rag_context")
-        or []
-    )
-
-    agent_trace = (
-        result.get("agent_trace")
-        or []
-    )
+    incident = result.get("incident") or {}
+    investigation = result.get("investigation") or {}
+    ml_analysis = result.get("ml_analysis") or {}
+    mitre_validation = result.get("mitre_validation") or {}
+    human_review = result.get("human_review") or {}
+    response = result.get("response") or {}
+    report = result.get("report") or {}
+    rag_context = result.get("rag_context") or []
+    agent_trace = result.get("agent_trace") or []
 
     rag_sources = [
         item.get("source")
@@ -542,6 +489,7 @@ def save_soar_action(
             is True
         )
         requires_approval = True
+
     else:
         approved = True
         requires_approval = False
@@ -806,6 +754,7 @@ def run_soc_workflow(
     Workflow lifecycle:
     running -> waiting_for_human
     running -> completed
+    running -> rate_limited
     running -> failed
     """
 
@@ -855,24 +804,44 @@ def run_soc_workflow(
 
     except Exception as exc:
 
+        rate_limited = is_llm_rate_limit_error(
+            exc
+        )
+
+        if rate_limited:
+            workflow_status = "rate_limited"
+            http_status = (
+                status.HTTP_429_TOO_MANY_REQUESTS
+            )
+            detail = (
+                "SOC workflow temporarily paused because "
+                "the LLM provider rate limit was reached."
+            )
+
+        else:
+            workflow_status = "failed"
+            http_status = (
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+            detail = (
+                "SOC agents workflow failed: "
+                f"{str(exc)}"
+            )
+
         try:
             update_incident_workflow_status(
                 db=db,
                 incident=incident,
-                workflow_status="failed",
+                workflow_status=workflow_status,
                 workflow_error=str(exc),
             )
+
         except Exception:
             pass
 
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
-            detail=(
-                "SOC agents workflow failed: "
-                f"{str(exc)}"
-            ),
+            status_code=http_status,
+            detail=detail,
         )
 
     # -----------------------------------------------------
@@ -930,6 +899,7 @@ def run_soc_workflow(
                 workflow_status="failed",
                 workflow_error=str(exc),
             )
+
         except Exception:
             pass
 
@@ -1089,7 +1059,9 @@ def resume_soc_workflow(
             status_code=(
                 status.HTTP_404_NOT_FOUND
             ),
-            detail="Incident not found in database.",
+            detail=(
+                "Incident not found in database."
+            ),
         )
 
     # -----------------------------------------------------
@@ -1158,24 +1130,44 @@ def resume_soc_workflow(
 
     except Exception as exc:
 
+        rate_limited = is_llm_rate_limit_error(
+            exc
+        )
+
+        if rate_limited:
+            workflow_status = "rate_limited"
+            http_status = (
+                status.HTTP_429_TOO_MANY_REQUESTS
+            )
+            detail = (
+                "SOC workflow temporarily paused because "
+                "the LLM provider rate limit was reached."
+            )
+
+        else:
+            workflow_status = "failed"
+            http_status = (
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+            detail = (
+                "Unable to resume workflow: "
+                f"{str(exc)}"
+            )
+
         try:
             update_incident_workflow_status(
                 db=db,
                 incident=db_incident,
-                workflow_status="failed",
+                workflow_status=workflow_status,
                 workflow_error=str(exc),
             )
+
         except Exception:
             pass
 
         raise HTTPException(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
-            detail=(
-                "Unable to resume workflow: "
-                f"{str(exc)}"
-            ),
+            status_code=http_status,
+            detail=detail,
         )
 
     # -----------------------------------------------------
@@ -1233,6 +1225,7 @@ def resume_soc_workflow(
                 workflow_status="failed",
                 workflow_error=str(exc),
             )
+
         except Exception:
             pass
 
