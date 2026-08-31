@@ -8,7 +8,7 @@ from app.models.incident import Incident
 from app.models.soar_action import SOARAction
 from app.models.soar_action_log import SOARActionLog
 from app.schemas.soar_action import SOARActionCreate
-
+from app.services.soar_executor_service import SOARExecutorService
 
 class SOARService:
 
@@ -540,24 +540,39 @@ class SOARService:
                     details=action.result,
                 )
 
-                return action
-
-        # -------------------------------------------------
-        # Prototype SOAR execution
+                # -------------------------------------------------
+        # Execute through SOAR Executor
         # -------------------------------------------------
 
-        action.status = "executed"
-        action.executed_at = datetime.utcnow()
+        execution_result = SOARExecutorService.execute(
+            action_type=action.action_type,
+            target=action.target,
+        )
 
-        action.result = {
-            "success": True,
-            "message": (
-                f"SOAR action "
-                f"'{action.action_type}' "
-                f"executed successfully."
-            ),
-            "target": action.target,
-        }
+        action.result = execution_result
+
+        # -------------------------------------------------
+        # Determine resulting status
+        # -------------------------------------------------
+
+        if execution_result.get("success") is True:
+
+            if execution_result.get("simulated") is True:
+                action.status = "simulated"
+
+            elif execution_result.get("executed") is True:
+                action.status = "executed"
+                action.executed_at = datetime.utcnow()
+
+            else:
+                action.status = "completed"
+
+        else:
+            action.status = "execution_failed"
+
+        # -------------------------------------------------
+        # Save result
+        # -------------------------------------------------
 
         try:
             db.commit()
@@ -567,13 +582,29 @@ class SOARService:
             db.rollback()
             raise
 
+        # -------------------------------------------------
+        # Audit event
+        # -------------------------------------------------
+
+        if action.status == "simulated":
+            event_type = "simulated"
+
+        elif action.status == "executed":
+            event_type = "executed"
+
+        elif action.status == "completed":
+            event_type = "completed"
+
+        else:
+            event_type = "execution_failed"
+
         SOARService.log_action_event(
             db=db,
             action=action,
-            event_type="executed",
+            event_type=event_type,
             previous_status=previous_status,
-            new_status="executed",
-            details=action.result,
+            new_status=action.status,
+            details=execution_result,
         )
 
         return action

@@ -1,0 +1,385 @@
+import subprocess
+from ipaddress import ip_address
+from typing import Any, Dict
+
+from app.core.config import settings
+
+
+class SOARExecutorService:
+    """
+    Technical executor for SOAR actions.
+
+    Responsibilities:
+    - execute actions in dry-run mode
+    - enforce execution feature flags
+    - validate targets
+    - prepare future real firewall/endpoint integrations
+
+    Real destructive actions remain disabled unless they are
+    explicitly enabled in the application configuration.
+    """
+
+    # =====================================================
+    # MAIN EXECUTOR
+    # =====================================================
+
+    @staticmethod
+    def execute(
+        action_type: str,
+        target: str,
+    ) -> Dict[str, Any]:
+        """
+        Execute one SOAR action.
+
+        Supported actions:
+        - create_ticket
+        - block_ip
+        - isolate_endpoint
+        """
+
+        normalized_action = (
+            action_type.strip().lower()
+            if action_type
+            else ""
+        )
+
+        normalized_target = (
+            target.strip()
+            if target
+            else ""
+        )
+
+        if not normalized_action:
+            return {
+                "success": False,
+                "executed": False,
+                "mode": settings.SOAR_EXECUTION_MODE,
+                "message": "Missing SOAR action type.",
+                "action_type": normalized_action,
+                "target": normalized_target,
+            }
+
+        if not normalized_target:
+            return {
+                "success": False,
+                "executed": False,
+                "mode": settings.SOAR_EXECUTION_MODE,
+                "message": "Missing SOAR action target.",
+                "action_type": normalized_action,
+                "target": normalized_target,
+            }
+
+        # -------------------------------------------------
+        # Route action to the correct executor
+        # -------------------------------------------------
+
+        if normalized_action == "create_ticket":
+            return SOARExecutorService.create_ticket(
+                normalized_target
+            )
+
+        if normalized_action == "block_ip":
+            return SOARExecutorService.block_ip(
+                normalized_target
+            )
+
+        if normalized_action == "isolate_endpoint":
+            return SOARExecutorService.isolate_endpoint(
+                normalized_target
+            )
+
+        return {
+            "success": False,
+            "executed": False,
+            "mode": settings.SOAR_EXECUTION_MODE,
+            "message": (
+                f"Unsupported SOAR action: "
+                f"{normalized_action}"
+            ),
+            "action_type": normalized_action,
+            "target": normalized_target,
+        }
+
+    # =====================================================
+    # DRY-RUN
+    # =====================================================
+
+    @staticmethod
+    def is_dry_run() -> bool:
+        """
+        Return True when SOAR runs in simulation mode.
+        """
+
+        return (
+            settings.SOAR_EXECUTION_MODE
+            .strip()
+            .lower()
+            == "dry_run"
+        )
+
+    # =====================================================
+    # CREATE TICKET
+    # =====================================================
+
+    @staticmethod
+    def create_ticket(
+        target: str,
+    ) -> Dict[str, Any]:
+        """
+        Prototype ticket creation.
+
+        This does not currently connect to an external
+        ticketing platform.
+        """
+
+        if SOARExecutorService.is_dry_run():
+            return {
+                "success": True,
+                "executed": False,
+                "simulated": True,
+                "mode": "dry_run",
+                "action_type": "create_ticket",
+                "target": target,
+                "message": (
+                    "DRY RUN: security ticket creation "
+                    "simulated successfully."
+                ),
+            }
+
+        return {
+            "success": True,
+            "executed": True,
+            "simulated": False,
+            "mode": settings.SOAR_EXECUTION_MODE,
+            "action_type": "create_ticket",
+            "target": target,
+            "message": (
+                "Security ticket action executed "
+                "successfully."
+            ),
+        }
+
+    # =====================================================
+    # BLOCK IP
+    # =====================================================
+
+    @staticmethod
+    def block_ip(
+        target: str,
+    ) -> Dict[str, Any]:
+        """
+        Prepare execution of an IP blocking action.
+
+        Real firewall modification is protected by:
+        1. IP validation
+        2. dry-run mode
+        3. SOAR_ENABLE_BLOCK_IP feature flag
+        """
+
+        if not SOARExecutorService.is_safe_ip(
+            target
+        ):
+            return {
+                "success": False,
+                "executed": False,
+                "simulated": False,
+                "mode": settings.SOAR_EXECUTION_MODE,
+                "action_type": "block_ip",
+                "target": target,
+                "message": (
+                    "SOAR safety policy rejected "
+                    "the IP target."
+                ),
+            }
+
+        # -------------------------------------------------
+        # Dry-run always wins
+        # -------------------------------------------------
+
+        if SOARExecutorService.is_dry_run():
+            return {
+                "success": True,
+                "executed": False,
+                "simulated": True,
+                "mode": "dry_run",
+                "action_type": "block_ip",
+                "target": target,
+                "message": (
+                    f"DRY RUN: firewall block for "
+                    f"{target} simulated successfully."
+                ),
+            }
+
+        # -------------------------------------------------
+        # Real IP blocking disabled
+        # -------------------------------------------------
+
+        if not settings.SOAR_ENABLE_BLOCK_IP:
+            return {
+                "success": False,
+                "executed": False,
+                "simulated": False,
+                "mode": settings.SOAR_EXECUTION_MODE,
+                "action_type": "block_ip",
+                "target": target,
+                "message": (
+                    "Real IP blocking is disabled by "
+                    "SOAR_ENABLE_BLOCK_IP."
+                ),
+            }
+
+        # -------------------------------------------------
+        # Real execution intentionally not activated yet
+        # -------------------------------------------------
+
+        return {
+            "success": False,
+            "executed": False,
+            "simulated": False,
+            "mode": settings.SOAR_EXECUTION_MODE,
+            "action_type": "block_ip",
+            "target": target,
+            "message": (
+                "Real firewall execution is enabled in "
+                "configuration but no production firewall "
+                "adapter has been configured yet."
+            ),
+        }
+
+    # =====================================================
+    # ISOLATE ENDPOINT
+    # =====================================================
+
+    @staticmethod
+    def isolate_endpoint(
+        target: str,
+    ) -> Dict[str, Any]:
+        """
+        Prepare endpoint isolation.
+
+        Real endpoint isolation requires an external EDR,
+        Wazuh Active Response, or another security adapter.
+        """
+
+        if not SOARExecutorService.is_safe_endpoint(
+            target
+        ):
+            return {
+                "success": False,
+                "executed": False,
+                "simulated": False,
+                "mode": settings.SOAR_EXECUTION_MODE,
+                "action_type": "isolate_endpoint",
+                "target": target,
+                "message": (
+                    "SOAR safety policy rejected "
+                    "the endpoint target."
+                ),
+            }
+
+        if SOARExecutorService.is_dry_run():
+            return {
+                "success": True,
+                "executed": False,
+                "simulated": True,
+                "mode": "dry_run",
+                "action_type": "isolate_endpoint",
+                "target": target,
+                "message": (
+                    f"DRY RUN: endpoint isolation for "
+                    f"{target} simulated successfully."
+                ),
+            }
+
+        if not settings.SOAR_ENABLE_ISOLATE_ENDPOINT:
+            return {
+                "success": False,
+                "executed": False,
+                "simulated": False,
+                "mode": settings.SOAR_EXECUTION_MODE,
+                "action_type": "isolate_endpoint",
+                "target": target,
+                "message": (
+                    "Real endpoint isolation is disabled "
+                    "by SOAR_ENABLE_ISOLATE_ENDPOINT."
+                ),
+            }
+
+        return {
+            "success": False,
+            "executed": False,
+            "simulated": False,
+            "mode": settings.SOAR_EXECUTION_MODE,
+            "action_type": "isolate_endpoint",
+            "target": target,
+            "message": (
+                "Endpoint isolation is enabled in "
+                "configuration but no production endpoint "
+                "isolation adapter has been configured yet."
+            ),
+        }
+
+    # =====================================================
+    # IP VALIDATION
+    # =====================================================
+
+    @staticmethod
+    def is_safe_ip(
+        target: str,
+    ) -> bool:
+        """
+        Reject invalid or protected IP addresses.
+        """
+
+        if not target:
+            return False
+
+        try:
+            ip = ip_address(
+                target.strip()
+            )
+
+        except ValueError:
+            return False
+
+        if ip.is_loopback:
+            return False
+
+        if ip.is_unspecified:
+            return False
+
+        if ip.is_multicast:
+            return False
+
+        return True
+
+    # =====================================================
+    # ENDPOINT VALIDATION
+    # =====================================================
+
+    @staticmethod
+    def is_safe_endpoint(
+        target: str,
+    ) -> bool:
+        """
+        Reject unusable endpoint identifiers.
+        """
+
+        if not target:
+            return False
+
+        normalized = target.strip().lower()
+
+        unsafe_values = {
+            "",
+            "unknown",
+            "unknown-endpoint",
+            "unknown_endpoint",
+            "none",
+            "null",
+            "n/a",
+            "na",
+            "undefined",
+        }
+
+        return normalized not in unsafe_values
