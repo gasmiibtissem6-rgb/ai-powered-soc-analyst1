@@ -1,5 +1,5 @@
 from typing import Dict
-
+from app.services.ml_service import MLService
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -40,4 +40,40 @@ def predict_network_traffic(request: TrafficPredictionRequest):
         raise HTTPException(
             status_code=400,
             detail=f"Prediction failed: {str(e)}",
+        )
+@router.post("/suricata-anomaly")
+def predict_suricata_flow_anomaly(
+    event: Dict,
+):
+    """
+    Detect anomalous Suricata flow events
+    using Isolation Forest.
+    """
+
+    try:
+        service = MLService()
+
+        result = (
+            service.detect_suricata_anomaly(
+                event
+            )
+        )
+
+        return {
+            "status": result["status"],
+            "prediction": result["prediction"],
+            "is_anomaly": result["is_anomaly"],
+            "anomaly_score": result[
+                "anomaly_score"
+            ],
+            "features": result["features"],
+        }
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Suricata anomaly prediction "
+                f"failed: {str(exc)}"
+            ),
         )

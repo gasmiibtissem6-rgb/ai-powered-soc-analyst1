@@ -11,6 +11,10 @@ from app.models.incident import Incident
 from app.services.threat_intelligence_service import (
     ThreatIntelligenceService,
 )
+from app.services.ioc_extractor import IOCExtractor
+from app.services.threat_intelligence_enrichment_service import (
+    ThreatIntelligenceEnrichmentService,
+)
 
 
 router = APIRouter(
@@ -19,19 +23,29 @@ router = APIRouter(
 )
 
 
+# =========================================================
+# SERVICES
+# =========================================================
+
 service = ThreatIntelligenceService()
+ioc_extractor = IOCExtractor()
+enrichment_service = ThreatIntelligenceEnrichmentService()
 
 
 # =========================================================
-# REQUEST SCHEMA
+# REQUEST SCHEMAS
 # =========================================================
 
 class TextAnalysisRequest(BaseModel):
     text: str
 
 
+class URLAnalysisRequest(BaseModel):
+    url: str
+
+
 # =========================================================
-# CHECK ONE IP
+# ABUSEIPDB - CHECK ONE IP
 # =========================================================
 
 @router.get("/ip/{ip_address}")
@@ -51,7 +65,7 @@ def check_ip(
 
 
 # =========================================================
-# ANALYZE TEXT
+# ABUSEIPDB - ANALYZE TEXT
 # =========================================================
 
 @router.post("/analyze")
@@ -71,7 +85,167 @@ def analyze_text(
 
 
 # =========================================================
-# ANALYZE INCIDENT
+# VIRUSTOTAL - CHECK IP
+# =========================================================
+
+@router.get("/virustotal/ip/{ip_address}")
+def virustotal_check_ip(
+    ip_address: str,
+):
+    try:
+        return enrichment_service.virustotal.check_ip(
+            ip_address
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+# =========================================================
+# VIRUSTOTAL - CHECK DOMAIN
+# =========================================================
+
+@router.get("/virustotal/domain/{domain}")
+def virustotal_check_domain(
+    domain: str,
+):
+    try:
+        return enrichment_service.virustotal.check_domain(
+            domain
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+# =========================================================
+# VIRUSTOTAL - CHECK URL
+# =========================================================
+
+@router.post("/virustotal/url")
+def virustotal_check_url(
+    request: URLAnalysisRequest,
+):
+    try:
+        return enrichment_service.virustotal.check_url(
+            request.url
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+# =========================================================
+# VIRUSTOTAL - CHECK HASH
+# =========================================================
+
+@router.get("/virustotal/hash/{file_hash}")
+def virustotal_check_hash(
+    file_hash: str,
+):
+    try:
+        return enrichment_service.virustotal.check_hash(
+            file_hash
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+# =========================================================
+# OTX - CHECK IP
+# =========================================================
+
+@router.get("/otx/ip/{ip_address}")
+def otx_check_ip(
+    ip_address: str,
+):
+    try:
+        return enrichment_service.otx.check_ip(
+            ip_address
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+# =========================================================
+# OTX - CHECK DOMAIN
+# =========================================================
+
+@router.get("/otx/domain/{domain}")
+def otx_check_domain(
+    domain: str,
+):
+    try:
+        return enrichment_service.otx.check_domain(
+            domain
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+# =========================================================
+# OTX - CHECK URL
+# =========================================================
+
+@router.post("/otx/url")
+def otx_check_url(
+    request: URLAnalysisRequest,
+):
+    try:
+        return enrichment_service.otx.check_url(
+            request.url
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+# =========================================================
+# OTX - CHECK HASH
+# =========================================================
+
+@router.get("/otx/hash/{file_hash}")
+def otx_check_hash(
+    file_hash: str,
+):
+    try:
+        return enrichment_service.otx.check_hash(
+            file_hash
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+# =========================================================
+# ANALYZE INCIDENT - MULTI PROVIDER
 # =========================================================
 
 @router.get("/incident/{incident_id}")
@@ -79,10 +253,25 @@ def analyze_incident_threat_intelligence(
     incident_id: int,
     db: Session = Depends(get_db),
 ):
+    """
+    Extract and enrich Indicators of Compromise from an incident.
 
-    # -----------------------------------------------------
-    # 1. Load incident
-    # -----------------------------------------------------
+    Supported IOC types:
+    - IP addresses
+    - Domains
+    - URLs
+    - File hashes
+
+    Providers:
+    - AbuseIPDB
+    - VirusTotal
+    - AlienVault OTX
+    - MISP
+    """
+
+    # =====================================================
+    # 1. LOAD INCIDENT
+    # =====================================================
 
     incident = (
         db.query(Incident)
@@ -98,81 +287,205 @@ def analyze_incident_threat_intelligence(
             detail="Incident not found",
         )
 
-    results = []
-    analyzed_ips = set()
-
-    # -----------------------------------------------------
-    # 2. Analyze source_ip directly
-    # -----------------------------------------------------
-
-    if incident.source_ip:
-        try:
-            result = service.check_ip(
-                incident.source_ip
-            )
-
-            results.append(
-                result
-            )
-
-            analyzed_ips.add(
-                incident.source_ip
-            )
-
-        except Exception as exc:
-            results.append(
-                {
-                    "ip_address": incident.source_ip,
-                    "error": str(exc),
-                }
-            )
-
-    # -----------------------------------------------------
-    # 3. Analyze IPs found in text
-    # -----------------------------------------------------
+    # =====================================================
+    # 2. BUILD INCIDENT TEXT
+    # =====================================================
 
     text = (
         f"{incident.title or ''} "
         f"{incident.description or ''}"
     )
 
-    extracted_ips = service.extract_ips(
-        text
+    # =====================================================
+    # 3. EXTRACT IOCs
+    # =====================================================
+
+    try:
+        extracted = ioc_extractor.extract_all(
+            text
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "IOC extraction failed: "
+                f"{str(exc)}"
+            ),
+        )
+
+    # -----------------------------------------------------
+    # IP addresses
+    # -----------------------------------------------------
+
+    ips = set(
+        extracted.get(
+            "ips",
+            [],
+        )
     )
 
-    for ip_address in extracted_ips:
+    if incident.source_ip:
+        ips.add(
+            incident.source_ip
+        )
 
-        if ip_address in analyzed_ips:
+    if incident.destination_ip:
+        ips.add(
+            incident.destination_ip
+        )
+
+    # -----------------------------------------------------
+    # Domains
+    # -----------------------------------------------------
+
+    domains = set(
+        extracted.get(
+            "domains",
+            [],
+        )
+    )
+
+    # -----------------------------------------------------
+    # URLs
+    # -----------------------------------------------------
+
+    urls = set(
+        extracted.get(
+            "urls",
+            [],
+        )
+    )
+
+    # -----------------------------------------------------
+    # Hashes
+    # -----------------------------------------------------
+
+    hashes = extracted.get(
+        "hashes",
+        [],
+    )
+
+    results = []
+
+    # =====================================================
+    # 4. IP ENRICHMENT
+    # =====================================================
+
+    for ip_address in sorted(
+        ips
+    ):
+        result = enrichment_service.enrich_ip(
+            ip_address
+        )
+
+        results.append(
+            result
+        )
+
+    # =====================================================
+    # 5. DOMAIN ENRICHMENT
+    # =====================================================
+
+    for domain in sorted(
+        domains
+    ):
+        result = enrichment_service.enrich_domain(
+            domain
+        )
+
+        results.append(
+            result
+        )
+
+    # =====================================================
+    # 6. URL ENRICHMENT
+    # =====================================================
+
+    for url in sorted(
+        urls
+    ):
+        result = enrichment_service.enrich_url(
+            url
+        )
+
+        results.append(
+            result
+        )
+
+    # =====================================================
+    # 7. HASH ENRICHMENT
+    # =====================================================
+
+    for hash_data in hashes:
+
+        if not isinstance(
+            hash_data,
+            dict,
+        ):
             continue
 
-        try:
-            result = service.check_ip(
-                ip_address
-            )
+        file_hash = hash_data.get(
+            "value"
+        )
 
-            results.append(
-                result
-            )
+        hash_type = hash_data.get(
+            "hash_type"
+        )
 
-            analyzed_ips.add(
-                ip_address
-            )
+        if not file_hash:
+            continue
 
-        except Exception as exc:
-            results.append(
-                {
-                    "ip_address": ip_address,
-                    "error": str(exc),
-                }
-            )
+        result = enrichment_service.enrich_hash(
+            file_hash,
+            hash_type=hash_type,
+        )
 
-    # -----------------------------------------------------
-    # 4. Response
-    # -----------------------------------------------------
+        results.append(
+            result
+        )
+
+    # =====================================================
+    # 8. RESPONSE
+    # =====================================================
 
     return {
         "incident_id": incident.id,
         "source": incident.source,
         "source_ip": incident.source_ip,
+        "destination_ip": incident.destination_ip,
+
+        "extracted_iocs": {
+            "ips": sorted(
+                ips
+            ),
+            "domains": sorted(
+                domains
+            ),
+            "urls": sorted(
+                urls
+            ),
+            "hashes": hashes,
+        },
+
+        "ioc_summary": {
+            "ips": len(
+                ips
+            ),
+            "domains": len(
+                domains
+            ),
+            "urls": len(
+                urls
+            ),
+            "hashes": len(
+                hashes
+            ),
+        },
+
+        "ioc_count": len(
+            results
+        ),
+
         "threat_intelligence": results,
     }

@@ -17,6 +17,9 @@ class SOCReportBase(BaseModel):
     ml_status: Optional[str] = None
     ml_prediction: Optional[str] = None
     ml_probabilities: Optional[Dict[str, Optional[float]]] = None
+    ml_engine: Optional[str] = None
+    ml_is_anomaly: Optional[bool] = None
+    ml_anomaly_score: Optional[float] = None
     # MITRE ATT&CK
     mitre_technique: Optional[str] = None
     mitre_name: Optional[str] = None

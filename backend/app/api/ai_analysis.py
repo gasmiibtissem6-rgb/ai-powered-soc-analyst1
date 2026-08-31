@@ -22,9 +22,7 @@ from app.schemas.ai_analysis import (
 from app.services.ai_analysis_service import AIAnalysisService
 from app.services.llm_service import LLMService
 from app.services.mitre_service import MitreService
-from app.services.threat_intelligence_service import (
-    ThreatIntelligenceService,
-)
+from app.agents.soc_graph import threat_intelligence_agent
 
 
 router = APIRouter(
@@ -232,18 +230,36 @@ def generate_ai_analysis(
     # 2. THREAT INTELLIGENCE
     # -----------------------------------------------------
 
-    threat_service = ThreatIntelligenceService()
+        # -----------------------------------------------------
+    # 2. THREAT INTELLIGENCE
+    # -----------------------------------------------------
 
-    incident_text = (
-        f"{incident.title} "
-        f"{incident.description}"
-    )
+    incident_state = {
+        "incident": {
+            "id": incident.id,
+            "title": incident.title,
+            "description": incident.description,
+            "severity": incident.severity,
+            "source": incident.source,
+            "hostname": incident.hostname,
+            "source_ip": incident.source_ip,
+            "destination_ip": incident.destination_ip,
+        },
+        "correlated_incidents": [],
+    }
 
     try:
 
+        threat_result = (
+            threat_intelligence_agent(
+                incident_state
+            )
+        )
+
         threat_intelligence = (
-            threat_service.analyze_text(
-                incident_text
+            threat_result.get(
+                "threat_intelligence",
+                [],
             )
         )
 
@@ -251,10 +267,11 @@ def generate_ai_analysis(
 
         threat_intelligence = [
             {
+                "status": "error",
                 "error": (
                     "Threat Intelligence failed: "
                     f"{str(exc)}"
-                )
+                ),
             }
         ]
 

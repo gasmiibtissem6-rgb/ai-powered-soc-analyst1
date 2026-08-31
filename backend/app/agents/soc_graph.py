@@ -20,7 +20,12 @@ from app.services.threat_intelligence_service import (
     ThreatIntelligenceService,
 )
 from app.services.correlation_service import CorrelationService
-
+from app.services.ioc_extractor import IOCExtractor
+import ipaddress
+from app.services.threat_intelligence_enrichment_service import (
+    ThreatIntelligenceEnrichmentService,
+)
+from app.services.ioc_extractor import IOCExtractor
 # =========================================================
 # STATE
 # =========================================================
@@ -105,29 +110,127 @@ def machine_learning_agent(
         {},
     )
 
-    features = incident.get(
+    ml_features = incident.get(
         "ml_features"
     )
 
-    # -----------------------------------------------------
-    # No ML feature vector provided
-    # -----------------------------------------------------
+    suricata_event = incident.get(
+        "suricata_event"
+    )
+
+    service = MLService()
+
+    rf_result = None
+    xgb_result = None
+    isolation_result = None
+
+    errors = {}
+
+    # =====================================================
+    # 1. Random Forest - CICIDS2017 classification
+    # =====================================================
 
     if (
-        not isinstance(
-            features,
+        isinstance(
+            ml_features,
             dict,
         )
-        or not features
+        and ml_features
     ):
+        try:
+            rf_result = (
+                service.predict_network_attack(
+                    ml_features
+                )
+            )
 
+        except Exception as exc:
+            errors["random_forest"] = str(
+                exc
+            )
+
+    # =====================================================
+    # 2. XGBoost - CICIDS2017 classification
+    # =====================================================
+
+    if (
+        isinstance(
+            ml_features,
+            dict,
+        )
+        and ml_features
+    ):
+        try:
+            xgb_result = (
+                service.predict_network_attack_xgboost(
+                    ml_features
+                )
+            )
+
+        except Exception as exc:
+            errors["xgboost"] = str(
+                exc
+            )
+
+    # =====================================================
+    # 3. Isolation Forest - Suricata anomaly detection
+    # =====================================================
+
+    if (
+        isinstance(
+            suricata_event,
+            dict,
+        )
+        and suricata_event
+    ):
+        try:
+            anomaly_event = dict(
+                suricata_event
+            )
+
+            anomaly_event[
+                "event_type"
+            ] = "flow"
+
+            isolation_result = (
+                service.detect_suricata_anomaly(
+                    anomaly_event
+                )
+            )
+
+        except Exception as exc:
+            errors[
+                "isolation_forest"
+            ] = str(exc)
+
+    # =====================================================
+    # 4. No usable ML input
+    # =====================================================
+
+    if (
+        rf_result is None
+        and xgb_result is None
+        and isolation_result is None
+    ):
         return {
             "ml_analysis": {
-                "status": "not_available",
+                "status": (
+                    "failed"
+                    if errors
+                    else "not_available"
+                ),
                 "prediction": None,
                 "reason": (
-                    "No network ML features "
-                    "provided for this incident."
+                    "No CICIDS2017 feature vector "
+                    "or Suricata network event "
+                    "was provided for this incident."
+                    if not errors
+                    else None
+                ),
+                "errors": (
+                    errors
+                    if errors
+                    else None
                 ),
             },
 
@@ -136,32 +239,88 @@ def machine_learning_agent(
             ],
         }
 
+    # =====================================================
+    # 5. Build combined ML result
+    # =====================================================
+
+    available_engines = []
+
+    if rf_result is not None:
+        available_engines.append(
+            "random_forest"
+        )
+
+    if xgb_result is not None:
+        available_engines.append(
+            "xgboost"
+        )
+
+    if isolation_result is not None:
+        available_engines.append(
+            "isolation_forest"
+        )
+
     # -----------------------------------------------------
-    # Random Forest prediction
+    # Top-level prediction
+    #
+    # Priority:
+    # - supervised classifiers when available
+    # - otherwise Isolation Forest
     # -----------------------------------------------------
 
-    try:
+    prediction = None
 
-        service = MLService()
+    if xgb_result is not None:
+        prediction = xgb_result.get(
+            "prediction"
+        )
 
+    elif rf_result is not None:
+        prediction = rf_result.get(
+            "prediction"
+        )
+
+    elif isolation_result is not None:
         prediction = (
-            service.predict_network_attack(
-                features
+            isolation_result.get(
+                "prediction"
             )
         )
 
-        ml_analysis = {
-            "status": "success",
-            **prediction,
-        }
-
-    except Exception as exc:
-
-        ml_analysis = {
-            "status": "failed",
-            "prediction": None,
-            "error": str(exc),
-        }
+    ml_analysis = {
+        "status": "success",
+        "engine": (
+            available_engines[0]
+            if len(available_engines) == 1
+            else "hybrid"
+        ),
+        "prediction": prediction,
+        "engines": available_engines,
+        "random_forest": rf_result,
+        "xgboost": xgb_result,
+        "isolation_forest": (
+            isolation_result
+        ),
+        "is_anomaly": (
+            isolation_result.get(
+                "is_anomaly"
+            )
+            if isolation_result
+            else None
+        ),
+        "anomaly_score": (
+            isolation_result.get(
+                "anomaly_score"
+            )
+            if isolation_result
+            else None
+        ),
+        "errors": (
+            errors
+            if errors
+            else None
+        ),
+    }
 
     return {
         "ml_analysis": ml_analysis,
@@ -171,20 +330,24 @@ def machine_learning_agent(
         ],
     }
 
-
-# =========================================================
-# 3. THREAT INTELLIGENCE AGENT
-# =========================================================
-
 def threat_intelligence_agent(
     state: SOCState,
 ) -> dict:
     """
-    Enrich the primary incident and correlated incidents
-    with Threat Intelligence.
+    Extract and enrich IOCs from the primary incident
+    and correlated incidents.
 
-    All unique IP addresses are collected first so the same
-    IP is never queried multiple times.
+    Supported IOC types:
+    - IP addresses
+    - Domains
+    - URLs
+    - File hashes
+
+    Threat Intelligence providers:
+    - AbuseIPDB
+    - VirusTotal
+    - AlienVault OTX
+    - MISP
     """
 
     incident = state.get(
@@ -197,62 +360,237 @@ def threat_intelligence_agent(
         [],
     )
 
-    service = ThreatIntelligenceService()
+    ioc_extractor = IOCExtractor()
+    enrichment_service = (
+        ThreatIntelligenceEnrichmentService()
+    )
 
     results = []
 
-    analyzed_ips = set()
-
     candidate_ips = set()
+    candidate_domains = set()
+    candidate_urls = set()
+    candidate_hashes = {}
+
+    observations = {}
+
+    # =====================================================
+    # REGISTER OBSERVATION
+    # =====================================================
+
+    def register_observation(
+        ioc_type,
+        value,
+        incident_data,
+        role,
+    ):
+        key = (
+            ioc_type,
+            value,
+        )
+
+        if key not in observations:
+            observations[key] = []
+
+        observation = {
+            "incident_id": incident_data.get(
+                "id"
+            ),
+            "source": incident_data.get(
+                "source"
+            ),
+            "role": role,
+        }
+
+        if observation not in observations[key]:
+            observations[key].append(
+                observation
+            )
+
+    # =====================================================
+    # COLLECT IOCs FROM INCIDENT
+    # =====================================================
+
+    def collect_incident_iocs(
+        incident_data,
+        role,
+    ):
+        if not isinstance(
+            incident_data,
+            dict,
+        ):
+            return
+
+        text = (
+            f"{incident_data.get('title', '')} "
+            f"{incident_data.get('description', '')}"
+        )
+
+        try:
+            extracted = (
+                ioc_extractor.extract_all(
+                    text
+                )
+            )
+
+        except Exception as exc:
+            print(
+                "Threat Intelligence IOC extraction "
+                f"failed for incident "
+                f"{incident_data.get('id')}: "
+                f"{str(exc)}"
+            )
+
+            extracted = {
+                "ips": [],
+                "domains": [],
+                "urls": [],
+                "hashes": [],
+            }
+
+        # -------------------------------------------------
+        # Explicit IP addresses
+        # -------------------------------------------------
+
+        explicit_ips = [
+            incident_data.get(
+                "source_ip"
+            ),
+            incident_data.get(
+                "destination_ip"
+            ),
+        ]
+
+        for ip_address in explicit_ips:
+
+            if not ip_address:
+                continue
+
+            candidate_ips.add(
+                ip_address
+            )
+
+            register_observation(
+                "ip",
+                ip_address,
+                incident_data,
+                role,
+            )
+
+        # -------------------------------------------------
+        # Extracted IP addresses
+        # -------------------------------------------------
+
+        for ip_address in extracted.get(
+            "ips",
+            [],
+        ):
+
+            if not ip_address:
+                continue
+
+            candidate_ips.add(
+                ip_address
+            )
+
+            register_observation(
+                "ip",
+                ip_address,
+                incident_data,
+                role,
+            )
+
+        # -------------------------------------------------
+        # Domains
+        # -------------------------------------------------
+
+        for domain in extracted.get(
+            "domains",
+            [],
+        ):
+
+            if not domain:
+                continue
+
+            candidate_domains.add(
+                domain
+            )
+
+            register_observation(
+                "domain",
+                domain,
+                incident_data,
+                role,
+            )
+
+        # -------------------------------------------------
+        # URLs
+        # -------------------------------------------------
+
+        for url in extracted.get(
+            "urls",
+            [],
+        ):
+
+            if not url:
+                continue
+
+            candidate_urls.add(
+                url
+            )
+
+            register_observation(
+                "url",
+                url,
+                incident_data,
+                role,
+            )
+
+        # -------------------------------------------------
+        # Hashes
+        # -------------------------------------------------
+
+        for hash_data in extracted.get(
+            "hashes",
+            [],
+        ):
+
+            if not isinstance(
+                hash_data,
+                dict,
+            ):
+                continue
+
+            file_hash = hash_data.get(
+                "value"
+            )
+
+            hash_type = hash_data.get(
+                "hash_type"
+            )
+
+            if not file_hash:
+                continue
+
+            candidate_hashes[
+                file_hash
+            ] = hash_type
+
+            register_observation(
+                "hash",
+                file_hash,
+                incident_data,
+                role,
+            )
 
     # =====================================================
     # PRIMARY INCIDENT
     # =====================================================
 
-    primary_source_ip = incident.get(
-        "source_ip"
+    collect_incident_iocs(
+        incident,
+        "primary",
     )
-
-    primary_destination_ip = incident.get(
-        "destination_ip"
-    )
-
-    if primary_source_ip:
-        candidate_ips.add(
-            primary_source_ip
-        )
-
-    if primary_destination_ip:
-        candidate_ips.add(
-            primary_destination_ip
-        )
-
-    primary_text = (
-        f"{incident.get('title', '')} "
-        f"{incident.get('description', '')}"
-    )
-
-    try:
-
-        extracted_primary_ips = (
-            service.extract_ips(
-                primary_text
-            )
-        )
-
-        for ip_address in extracted_primary_ips:
-
-            if ip_address:
-                candidate_ips.add(
-                    ip_address
-                )
-
-    except Exception as exc:
-
-        print(
-            "Threat Intelligence IP extraction "
-            f"failed for primary incident: {str(exc)}"
-        )
 
     # =====================================================
     # CORRELATED INCIDENTS
@@ -260,196 +598,134 @@ def threat_intelligence_agent(
 
     for correlated in correlated_incidents:
 
-        if not isinstance(
+        collect_incident_iocs(
             correlated,
-            dict,
-        ):
-            continue
-
-        correlated_source_ip = (
-            correlated.get(
-                "source_ip"
-            )
+            "correlated",
         )
-
-        correlated_destination_ip = (
-            correlated.get(
-                "destination_ip"
-            )
-        )
-
-        if correlated_source_ip:
-            candidate_ips.add(
-                correlated_source_ip
-            )
-
-        if correlated_destination_ip:
-            candidate_ips.add(
-                correlated_destination_ip
-            )
-
-        correlated_text = (
-            f"{correlated.get('title', '')} "
-            f"{correlated.get('description', '')}"
-        )
-
-        try:
-
-            extracted_correlated_ips = (
-                service.extract_ips(
-                    correlated_text
-                )
-            )
-
-            for ip_address in (
-                extracted_correlated_ips
-            ):
-
-                if ip_address:
-                    candidate_ips.add(
-                        ip_address
-                    )
-
-        except Exception as exc:
-
-            print(
-                "Threat Intelligence IP extraction "
-                "failed for correlated incident "
-                f"{correlated.get('id')}: "
-                f"{str(exc)}"
-            )
 
     # =====================================================
-    # THREAT INTELLIGENCE LOOKUPS
+    # IP ENRICHMENT
     # =====================================================
 
     for ip_address in sorted(
         candidate_ips
     ):
 
-        if not ip_address:
-            continue
-
-        if ip_address in analyzed_ips:
-            continue
-
-        try:
-
-            result = service.check_ip(
+        result = (
+            enrichment_service.enrich_ip(
                 ip_address
             )
+        )
 
-            if isinstance(
-                result,
-                dict,
-            ):
-
-                result["observed_in"] = []
-
-                if (
-                    ip_address
-                    == incident.get(
-                        "source_ip"
-                    )
-                    or ip_address
-                    == incident.get(
-                        "destination_ip"
-                    )
-                    or ip_address
-                    in primary_text
-                ):
-
-                    result[
-                        "observed_in"
-                    ].append(
-                        {
-                            "incident_id": (
-                                incident.get(
-                                    "id"
-                                )
-                            ),
-                            "source": (
-                                incident.get(
-                                    "source"
-                                )
-                            ),
-                            "role": "primary",
-                        }
-                    )
-
-                for correlated in (
-                    correlated_incidents
-                ):
-
-                    if not isinstance(
-                        correlated,
-                        dict,
-                    ):
-                        continue
-
-                    correlated_text = (
-                        f"{correlated.get('title', '')} "
-                        f"{correlated.get('description', '')}"
-                    )
-
-                    if (
-                        ip_address
-                        == correlated.get(
-                            "source_ip"
-                        )
-                        or ip_address
-                        == correlated.get(
-                            "destination_ip"
-                        )
-                        or ip_address
-                        in correlated_text
-                    ):
-
-                        result[
-                            "observed_in"
-                        ].append(
-                            {
-                                "incident_id": (
-                                    correlated.get(
-                                        "id"
-                                    )
-                                ),
-                                "source": (
-                                    correlated.get(
-                                        "source"
-                                    )
-                                ),
-                                "role": "correlated",
-                            }
-                        )
-
-            results.append(
-                result
+        result["observed_in"] = (
+            observations.get(
+                (
+                    "ip",
+                    ip_address,
+                ),
+                [],
             )
+        )
 
-        except Exception as exc:
+        results.append(
+            result
+        )
 
-            results.append(
-                {
-                    "ip_address": ip_address,
+    # =====================================================
+    # DOMAIN ENRICHMENT
+    # =====================================================
 
-                    "error": (
-                        "Threat Intelligence failed: "
-                        f"{str(exc)}"
-                    ),
-                }
+    for domain in sorted(
+        candidate_domains
+    ):
+
+        result = (
+            enrichment_service.enrich_domain(
+                domain
             )
+        )
 
-        finally:
-
-            analyzed_ips.add(
-                ip_address
+        result["observed_in"] = (
+            observations.get(
+                (
+                    "domain",
+                    domain,
+                ),
+                [],
             )
+        )
+
+        results.append(
+            result
+        )
+
+    # =====================================================
+    # URL ENRICHMENT
+    # =====================================================
+
+    for url in sorted(
+        candidate_urls
+    ):
+
+        result = (
+            enrichment_service.enrich_url(
+                url
+            )
+        )
+
+        result["observed_in"] = (
+            observations.get(
+                (
+                    "url",
+                    url,
+                ),
+                [],
+            )
+        )
+
+        results.append(
+            result
+        )
+
+    # =====================================================
+    # HASH ENRICHMENT
+    # =====================================================
+
+    for file_hash in sorted(
+        candidate_hashes
+    ):
+
+        hash_type = candidate_hashes[
+            file_hash
+        ]
+
+        result = (
+            enrichment_service.enrich_hash(
+                file_hash,
+                hash_type=hash_type,
+            )
+        )
+
+        result["observed_in"] = (
+            observations.get(
+                (
+                    "hash",
+                    file_hash,
+                ),
+                [],
+            )
+        )
+
+        results.append(
+            result
+        )
+
+    # =====================================================
+    # RESPONSE
+    # =====================================================
 
     return {
-        "threat_intelligence": (
-            results
-        ),
+        "threat_intelligence": results,
 
         "agent_trace": [
             "Threat Intelligence"

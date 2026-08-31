@@ -416,6 +416,8 @@ def save_soc_report(
     # -----------------------------------------------------
 
     ml_probabilities = {
+
+
         "BENIGN": ml_analysis.get(
             "benign_probability"
         ),
@@ -434,7 +436,10 @@ def save_soc_report(
 
         "SSH-Patator": ml_analysis.get(
             "ssh_patator_probability"
+
         ),
+
+
     }
 
     # -----------------------------------------------------
@@ -541,7 +546,17 @@ def save_soc_report(
         ml_probabilities=(
             ml_probabilities
         ),
+        ml_engine=ml_analysis.get(
+    "engine"
+),
 
+ml_is_anomaly=ml_analysis.get(
+    "is_anomaly"
+),
+
+ml_anomaly_score=ml_analysis.get(
+    "anomaly_score"
+),
         mitre_technique=report.get(
             "mitre_technique",
             mitre_validation.get(
@@ -756,6 +771,7 @@ def build_initial_state(
     db: Session,
     incident: Incident,
     request: Optional[AnalyzeIncidentRequest] = None,
+    suricata_event: Optional[dict] = None,
 ) -> dict:
     """
     Build the initial LangGraph state from an Incident.
@@ -843,6 +859,10 @@ def build_initial_state(
                 request.ml_features
                 if request
                 else None
+            ),
+
+             "suricata_event": (
+                suricata_event
             ),
         },
 
@@ -1013,6 +1033,7 @@ def run_soc_workflow(
     db: Session,
     incident: Incident,
     request: Optional[AnalyzeIncidentRequest] = None,
+    suricata_event: Optional[dict] = None,
 ) -> dict:
     """
     Start the SOC LangGraph workflow.
@@ -1057,6 +1078,7 @@ def run_soc_workflow(
         db=db,
         incident=incident,
         request=request,
+        suricata_event=suricata_event,
     )
 
     # -----------------------------------------------------

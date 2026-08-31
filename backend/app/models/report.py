@@ -1,8 +1,10 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -85,7 +87,20 @@ class SOCReport(Base):
         JSONB,
         nullable=True,
     )
+    ml_engine = Column(
+        String(50),
+        nullable=True,
+    )
 
+    ml_is_anomaly = Column(
+        Boolean,
+        nullable=True,
+    )
+
+    ml_anomaly_score = Column(
+        Float,
+        nullable=True,
+    )
     # =====================================================
     # MITRE ATT&CK
     # =====================================================

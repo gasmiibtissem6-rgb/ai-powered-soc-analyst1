@@ -29,7 +29,11 @@ class Settings(BaseSettings):
     # =====================================================
 
     ABUSEIPDB_API_KEY: str
-
+    VIRUSTOTAL_API_KEY: str = ""
+    OTX_API_KEY: str = ""
+    MISP_URL: str = ""
+    MISP_API_KEY: str = ""
+    MISP_VERIFY_SSL: bool = True
     # =====================================================
     # SOAR EXECUTION
     # =====================================================

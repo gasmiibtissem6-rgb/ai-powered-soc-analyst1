@@ -370,10 +370,11 @@ def receive_suricata_alert(
 
     try:
         workflow_result = run_soc_workflow(
-            db=db,
-            incident=incident,
-            request=None,
-        )
+    db=db,
+    incident=incident,
+    request=None,
+    suricata_event=alert,
+)
 
     except Exception as exc:
         print(
