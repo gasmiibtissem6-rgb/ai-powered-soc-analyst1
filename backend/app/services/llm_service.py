@@ -281,9 +281,25 @@ Return JSON only.
                 continue
 
         if not valid_objects:
-            raise ValueError(
-                "No valid JSON object found in LLM response"
-            )
+            return {
+                "summary": (
+                    "The AI analysis could not be parsed "
+                    "into the expected JSON format."
+                ),
+                "risk_level": "medium",
+                "explanation": (
+                    "The LLM returned a response, but it "
+                    "was not valid structured JSON. "
+                    "The SOC workflow continued using a "
+                    "safe fallback analysis."
+                ),
+                "recommendation": (
+                    "Review the incident manually and "
+                    "retry the AI analysis if necessary."
+                ),
+                "mitre_technique": "Unknown",
+            }
+
 
         # =====================================================
         # 7. VALIDATE REQUIRED FIELDS
@@ -307,10 +323,25 @@ Return JSON only.
                 result = obj
                 break
 
-        if result is None:
-            raise ValueError(
-                "LLM JSON is missing required fields"
-            )
+                if result is None:
+                 return {
+                "summary": (
+                    "The AI analysis returned incomplete "
+                    "structured data."
+                ),
+                "risk_level": "medium",
+                "explanation": (
+                    "The LLM response was valid JSON, but "
+                    "one or more required SOC analysis "
+                    "fields were missing. The workflow "
+                    "continued using a safe fallback."
+                ),
+                "recommendation": (
+                    "Review the incident manually and "
+                    "retry the AI analysis if necessary."
+                ),
+                "mitre_technique": "Unknown",
+            }
 
         # =====================================================
         # 8. NORMALIZE RISK LEVEL
