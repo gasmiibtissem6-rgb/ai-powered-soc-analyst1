@@ -1,14 +1,53 @@
 from datetime import datetime
 from ipaddress import ip_address
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from app.models.incident import Incident
 from app.models.soar_action import SOARAction
+from app.models.soar_action_log import SOARActionLog
 from app.schemas.soar_action import SOARActionCreate
 
 
 class SOARService:
+
+    # =====================================================
+    # AUDIT LOG
+    # =====================================================
+
+    @staticmethod
+    def log_action_event(
+        db: Session,
+        action: SOARAction,
+        event_type: str,
+        previous_status: Optional[str],
+        new_status: str,
+        details: Optional[dict] = None,
+    ) -> SOARActionLog:
+        """
+        Persist one SOAR audit event.
+        """
+
+        log = SOARActionLog(
+            action_id=action.id,
+            incident_id=action.incident_id,
+            event_type=event_type,
+            previous_status=previous_status,
+            new_status=new_status,
+            details=details,
+        )
+
+        try:
+            db.add(log)
+            db.commit()
+            db.refresh(log)
+
+        except Exception:
+            db.rollback()
+            raise
+
+        return log
 
     # =====================================================
     # GET ALL ACTIONS
@@ -44,6 +83,27 @@ class SOARService:
         )
 
     # =====================================================
+    # GET ACTION AUDIT LOGS
+    # =====================================================
+
+    @staticmethod
+    def get_action_logs(
+        db: Session,
+        action_id: int,
+    ):
+        return (
+            db.query(SOARActionLog)
+            .filter(
+                SOARActionLog.action_id
+                == action_id
+            )
+            .order_by(
+                SOARActionLog.id.asc()
+            )
+            .all()
+        )
+
+    # =====================================================
     # CREATE ACTION
     # =====================================================
 
@@ -69,6 +129,7 @@ class SOARService:
             target=data.target,
             requires_approval=data.requires_approval,
             status="pending",
+            approved=None,
         )
 
         try:
@@ -79,6 +140,21 @@ class SOARService:
         except Exception:
             db.rollback()
             raise
+
+        SOARService.log_action_event(
+            db=db,
+            action=action,
+            event_type="created",
+            previous_status=None,
+            new_status="pending",
+            details={
+                "action_type": action.action_type,
+                "target": action.target,
+                "requires_approval": (
+                    action.requires_approval
+                ),
+            },
+        )
 
         return action
 
@@ -98,6 +174,8 @@ class SOARService:
 
         if not action:
             return None
+
+        previous_status = action.status
 
         # -------------------------------------------------
         # Safety: invalid endpoint cannot be approved
@@ -128,6 +206,15 @@ class SOARService:
                 except Exception:
                     db.rollback()
                     raise
+
+                SOARService.log_action_event(
+                    db=db,
+                    action=action,
+                    event_type="blocked_by_safety",
+                    previous_status=previous_status,
+                    new_status="blocked_by_safety",
+                    details=action.result,
+                )
 
                 return action
 
@@ -161,6 +248,15 @@ class SOARService:
                     db.rollback()
                     raise
 
+                SOARService.log_action_event(
+                    db=db,
+                    action=action,
+                    event_type="blocked_by_safety",
+                    previous_status=previous_status,
+                    new_status="blocked_by_safety",
+                    details=action.result,
+                )
+
                 return action
 
         action.approved = True
@@ -173,6 +269,18 @@ class SOARService:
         except Exception:
             db.rollback()
             raise
+
+        SOARService.log_action_event(
+            db=db,
+            action=action,
+            event_type="approved",
+            previous_status=previous_status,
+            new_status="approved",
+            details={
+                "target": action.target,
+                "action_type": action.action_type,
+            },
+        )
 
         return action
 
@@ -193,6 +301,8 @@ class SOARService:
         if not action:
             return None
 
+        previous_status = action.status
+
         action.approved = False
         action.status = "rejected"
 
@@ -203,6 +313,18 @@ class SOARService:
         except Exception:
             db.rollback()
             raise
+
+        SOARService.log_action_event(
+            db=db,
+            action=action,
+            event_type="rejected",
+            previous_status=previous_status,
+            new_status="rejected",
+            details={
+                "target": action.target,
+                "action_type": action.action_type,
+            },
+        )
 
         return action
 
@@ -298,6 +420,8 @@ class SOARService:
         if not action:
             return None
 
+        previous_status = action.status
+
         # -------------------------------------------------
         # Approval requirement
         # -------------------------------------------------
@@ -336,6 +460,15 @@ class SOARService:
                     db.rollback()
                     raise
 
+                SOARService.log_action_event(
+                    db=db,
+                    action=action,
+                    event_type="blocked_by_safety",
+                    previous_status=previous_status,
+                    new_status="blocked_by_safety",
+                    details=action.result,
+                )
+
                 return action
 
         # -------------------------------------------------
@@ -367,6 +500,15 @@ class SOARService:
                     db.rollback()
                     raise
 
+                SOARService.log_action_event(
+                    db=db,
+                    action=action,
+                    event_type="blocked_by_safety",
+                    previous_status=previous_status,
+                    new_status="blocked_by_safety",
+                    details=action.result,
+                )
+
                 return action
 
         # -------------------------------------------------
@@ -393,5 +535,14 @@ class SOARService:
         except Exception:
             db.rollback()
             raise
+
+        SOARService.log_action_event(
+            db=db,
+            action=action,
+            event_type="executed",
+            previous_status=previous_status,
+            new_status="executed",
+            details=action.result,
+        )
 
         return action
