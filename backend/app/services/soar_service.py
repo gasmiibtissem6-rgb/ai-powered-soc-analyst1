@@ -102,7 +102,38 @@ class SOARService:
             )
             .all()
         )
+        # =====================================================
+    # GET ACTION AUDIT LOGS
+    # =====================================================
 
+    @staticmethod
+    def get_action_logs(
+        db: Session,
+        action_id: int,
+    ):
+        """
+        Return the complete audit history
+        for one SOAR action.
+        """
+
+        action = SOARService.get_action(
+            db=db,
+            action_id=action_id,
+        )
+
+        if not action:
+            return None
+
+        return (
+            db.query(SOARActionLog)
+            .filter(
+                SOARActionLog.action_id == action_id
+            )
+            .order_by(
+                SOARActionLog.id.asc()
+            )
+            .all()
+        )
     # =====================================================
     # CREATE ACTION
     # =====================================================

@@ -24,3 +24,16 @@ class SOARActionResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SOARActionLogResponse(BaseModel):
+    id: int
+    action_id: int
+    incident_id: int
+    event_type: str
+    previous_status: Optional[str] = None
+    new_status: str
+    details: Optional[Any] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

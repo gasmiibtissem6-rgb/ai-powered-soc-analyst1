@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
-from app.schemas.soar_action import SOARActionCreate, SOARActionResponse
 from app.services.soar_service import SOARService
-
-
+from app.schemas.soar_action import (
+    SOARActionCreate,
+    SOARActionResponse,
+    SOARActionLogResponse,
+)
 router = APIRouter(
     prefix="/soar",
     tags=["SOAR"],
@@ -16,6 +18,26 @@ router = APIRouter(
 def get_actions(db: Session = Depends(get_db)):
     return SOARService.get_actions(db)
 
+@router.get(
+    "/{action_id}/logs",
+    response_model=list[SOARActionLogResponse],
+)
+def get_action_logs(
+    action_id: int,
+    db: Session = Depends(get_db),
+):
+    logs = SOARService.get_action_logs(
+        db=db,
+        action_id=action_id,
+    )
+
+    if logs is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="SOAR action not found",
+        )
+
+    return logs
 
 @router.get("/{action_id}", response_model=SOARActionResponse)
 def get_action(action_id: int, db: Session = Depends(get_db)):
