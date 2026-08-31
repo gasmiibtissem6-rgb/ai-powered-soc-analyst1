@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import uuid4
 
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.models.incident import Incident
@@ -46,6 +46,17 @@ class CorrelationService:
         """
         Look for a recent incident from another source
         that may belong to the same security activity.
+
+        Correlation rules:
+
+        1. Preferred:
+           exact same source/destination pair.
+
+        2. Also accepted:
+           reverse source/destination pair.
+
+        3. Hostname is used only as a fallback when
+           network IP information is incomplete.
         """
 
         created_after = datetime.utcnow() - timedelta(
@@ -60,47 +71,61 @@ class CorrelationService:
             )
         )
 
-        conditions = []
-
         # -------------------------------------------------
-        # Source IP correlation
+        # Strong network correlation
         # -------------------------------------------------
 
-        if source_ip:
-            conditions.extend(
-                [
-                    Incident.source_ip == source_ip,
-                    Incident.destination_ip == source_ip,
-                ]
+        if source_ip and destination_ip:
+
+            same_direction = and_(
+                Incident.source_ip == source_ip,
+                Incident.destination_ip == destination_ip,
+            )
+
+            reverse_direction = and_(
+                Incident.source_ip == destination_ip,
+                Incident.destination_ip == source_ip,
+            )
+
+            query = query.filter(
+                or_(
+                    same_direction,
+                    reverse_direction,
+                )
             )
 
         # -------------------------------------------------
-        # Destination IP correlation
+        # Source IP only
         # -------------------------------------------------
 
-        if destination_ip:
-            conditions.extend(
-                [
-                    Incident.source_ip == destination_ip,
-                    Incident.destination_ip == destination_ip,
-                ]
+        elif source_ip:
+
+            query = query.filter(
+                Incident.source_ip == source_ip
             )
 
         # -------------------------------------------------
-        # Hostname correlation
+        # Destination IP only
         # -------------------------------------------------
 
-        if hostname:
-            conditions.append(
+        elif destination_ip:
+
+            query = query.filter(
+                Incident.destination_ip == destination_ip
+            )
+
+        # -------------------------------------------------
+        # Hostname fallback
+        # -------------------------------------------------
+
+        elif hostname:
+
+            query = query.filter(
                 Incident.hostname == hostname
             )
 
-        if not conditions:
+        else:
             return None
-
-        query = query.filter(
-            or_(*conditions)
-        )
 
         return (
             query.order_by(
@@ -129,7 +154,6 @@ class CorrelationService:
         Otherwise a new correlation_id is generated.
         """
 
-        # Incident already correlated
         if incident.correlation_id:
             return incident.correlation_id
 
@@ -147,6 +171,7 @@ class CorrelationService:
         # -------------------------------------------------
 
         if related:
+
             correlation_id = (
                 related.correlation_id
                 or CorrelationService.generate_correlation_id()
@@ -199,9 +224,6 @@ class CorrelationService:
     ) -> Optional[Incident]:
         """
         Return the oldest incident in a correlation group.
-
-        This incident is considered the primary incident
-        responsible for running the complete SOC workflow.
         """
 
         if not correlation_id:
@@ -256,11 +278,8 @@ class CorrelationService:
         incident: Incident,
     ) -> bool:
         """
-        Determine whether the complete SOC workflow
-        should run for this incident.
-
         Only the primary incident in a correlation group
-        runs the complete AI workflow.
+        runs the complete SOC workflow.
         """
 
         return CorrelationService.is_primary_incident(
@@ -279,9 +298,6 @@ class CorrelationService:
     ) -> None:
         """
         Mark a secondary incident as correlated.
-
-        The incident is preserved in the database,
-        but the complete SOC workflow is not executed again.
         """
 
         incident.workflow_status = "correlated"
