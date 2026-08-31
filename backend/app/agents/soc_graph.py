@@ -201,14 +201,12 @@ def threat_intelligence_agent(
 
     results = []
 
-    # IPs already processed by Threat Intelligence
     analyzed_ips = set()
 
-    # IPs discovered across all incident sources
     candidate_ips = set()
 
     # =====================================================
-    # 1. PRIMARY INCIDENT
+    # PRIMARY INCIDENT
     # =====================================================
 
     primary_source_ip = incident.get(
@@ -235,6 +233,7 @@ def threat_intelligence_agent(
     )
 
     try:
+
         extracted_primary_ips = (
             service.extract_ips(
                 primary_text
@@ -256,7 +255,7 @@ def threat_intelligence_agent(
         )
 
     # =====================================================
-    # 2. CORRELATED INCIDENTS
+    # CORRELATED INCIDENTS
     # =====================================================
 
     for correlated in correlated_incidents:
@@ -321,7 +320,7 @@ def threat_intelligence_agent(
             )
 
     # =====================================================
-    # 3. THREAT INTELLIGENCE LOOKUPS
+    # THREAT INTELLIGENCE LOOKUPS
     # =====================================================
 
     for ip_address in sorted(
@@ -340,7 +339,6 @@ def threat_intelligence_agent(
                 ip_address
             )
 
-            # Add useful provenance information
             if isinstance(
                 result,
                 dict,
@@ -448,10 +446,6 @@ def threat_intelligence_agent(
                 ip_address
             )
 
-    # =====================================================
-    # 4. RESULT
-    # =====================================================
-
     return {
         "threat_intelligence": (
             results
@@ -491,9 +485,9 @@ def investigation_agent(
         {},
     )
 
-    # -----------------------------------------------------
+    # =====================================================
     # RAG SEARCH
-    # -----------------------------------------------------
+    # =====================================================
 
     rag_service = RAGService()
 
@@ -518,9 +512,9 @@ def investigation_agent(
 
         rag_context = []
 
-    # -----------------------------------------------------
-    # Add ML result to investigation context
-    # -----------------------------------------------------
+    # =====================================================
+    # MACHINE LEARNING CONTEXT
+    # =====================================================
 
     ml_context = []
 
@@ -576,9 +570,9 @@ def investigation_agent(
             }
         ]
 
-    # -----------------------------------------------------
-    # Add correlated multi-source evidence
-    # -----------------------------------------------------
+    # =====================================================
+    # CORRELATED MULTI-SOURCE EVIDENCE
+    # =====================================================
 
     correlation_context = []
 
@@ -674,19 +668,110 @@ def investigation_agent(
             }
         )
 
+    # =====================================================
+    # MULTI-SOURCE CORRELATION CONFIDENCE
+    # =====================================================
+
+    detected_sources = set()
+
+    primary_source = incident.get(
+        "source"
+    )
+
+    if primary_source:
+        detected_sources.add(
+            str(primary_source)
+        )
+
+    for correlated in correlated_incidents:
+
+        if not isinstance(
+            correlated,
+            dict,
+        ):
+            continue
+
+        correlated_source = (
+            correlated.get(
+                "source"
+            )
+        )
+
+        if correlated_source:
+            detected_sources.add(
+                str(correlated_source)
+            )
+
+    source_count = len(
+        detected_sources
+    )
+
     # -----------------------------------------------------
-    # Final investigation context
+    # Confidence based on independent sensor sources
     # -----------------------------------------------------
+
+    if source_count >= 3:
+
+        correlation_confidence = (
+            "high"
+        )
+
+    elif source_count == 2:
+
+        correlation_confidence = (
+            "medium"
+        )
+
+    else:
+
+        correlation_confidence = (
+            "single_source"
+        )
+
+    correlation_summary = {
+        "source": "multi_source_correlation",
+
+        "correlation_id": (
+            incident.get(
+                "correlation_id"
+            )
+        ),
+
+        "source_count": (
+            source_count
+        ),
+
+        "sources": sorted(
+            detected_sources
+        ),
+
+        "confidence": (
+            correlation_confidence
+        ),
+
+        "correlated_incident_count": (
+            len(
+                correlated_incidents
+            )
+        ),
+    }
+
+    # =====================================================
+    # FINAL INVESTIGATION CONTEXT
+    # =====================================================
 
     investigation_context = (
         rag_context
         + ml_context
         + correlation_context
+        + [
+            correlation_summary
+        ]
     )
 
-    # -----------------------------------------------------
+    # =====================================================
     # LLM ANALYSIS
-    # -----------------------------------------------------
+    # =====================================================
 
     llm = LLMService()
 
@@ -720,17 +805,17 @@ def investigation_agent(
         ),
     )
 
-    # -----------------------------------------------------
-    # Add ML result to investigation result
-    # -----------------------------------------------------
+    # =====================================================
+    # ADD ML RESULT
+    # =====================================================
 
     result["ml_analysis"] = (
         ml_analysis
     )
 
-    # -----------------------------------------------------
-    # Add correlation information to investigation result
-    # -----------------------------------------------------
+    # =====================================================
+    # ADD MULTI-SOURCE CORRELATION INFORMATION
+    # =====================================================
 
     result["correlation_id"] = (
         incident.get(
@@ -744,29 +829,19 @@ def investigation_agent(
         )
     )
 
-    result["correlated_sources"] = sorted(
-        {
-            str(
-                item.get(
-                    "source"
-                )
-            )
-            for item in correlated_incidents
-            if (
-                isinstance(
-                    item,
-                    dict,
-                )
-                and item.get(
-                    "source"
-                )
-            )
-        }
+    result["correlated_sources"] = (
+        sorted(
+            detected_sources
+        )
     )
 
-    # -----------------------------------------------------
+    result["correlation_confidence"] = (
+        correlation_confidence
+    )
+
+    # =====================================================
     # MITRE ATT&CK VALIDATION
-    # -----------------------------------------------------
+    # =====================================================
 
     mitre_service = MitreService()
 
@@ -812,10 +887,11 @@ def investigation_agent(
         }
 
     return {
-        "investigation": result,
+        "investigation": (
+            result
+        ),
 
-        # Important:
-        # Preserve RAG + ML + correlated evidence.
+        # Keep the complete enriched context
         "rag_context": (
             investigation_context
         ),
@@ -908,11 +984,15 @@ def human_review_agent(
             ),
 
             "incident_id": (
-                incident.get("id")
+                incident.get(
+                    "id"
+                )
             ),
 
             "title": (
-                incident.get("title")
+                incident.get(
+                    "title"
+                )
             ),
 
             "risk_level": (
@@ -961,7 +1041,9 @@ def human_review_agent(
     human_review = {
         "required": True,
 
-        "approved": approved,
+        "approved": (
+            approved
+        ),
 
         "status": (
             "approved"
@@ -969,7 +1051,9 @@ def human_review_agent(
             else "rejected"
         ),
 
-        "comment": comment,
+        "comment": (
+            comment
+        ),
     }
 
     return {
@@ -1029,7 +1113,9 @@ def build_soar_action(
         recommendation or ""
     ).lower()
 
-    action_type = "create_ticket"
+    action_type = (
+        "create_ticket"
+    )
 
     # =====================================================
     # DETERMINE ACTION TYPE
@@ -1037,31 +1123,46 @@ def build_soar_action(
 
     if "isolate" in recommendation_lower:
 
-        action_type = "isolate_endpoint"
+        action_type = (
+            "isolate_endpoint"
+        )
 
     elif (
-        "block" in recommendation_lower
-        and "ip" in recommendation_lower
+        "block"
+        in recommendation_lower
+        and "ip"
+        in recommendation_lower
     ):
 
-        action_type = "block_ip"
+        action_type = (
+            "block_ip"
+        )
 
     elif (
-        "disable" in recommendation_lower
+        "disable"
+        in recommendation_lower
         and (
-            "user" in recommendation_lower
-            or "account" in recommendation_lower
+            "user"
+            in recommendation_lower
+            or "account"
+            in recommendation_lower
         )
     ):
 
-        action_type = "disable_user"
+        action_type = (
+            "disable_user"
+        )
 
     elif (
-        "notify" in recommendation_lower
-        or "notification" in recommendation_lower
+        "notify"
+        in recommendation_lower
+        or "notification"
+        in recommendation_lower
     ):
 
-        action_type = "send_notification"
+        action_type = (
+            "send_notification"
+        )
 
     # =====================================================
     # ISOLATE ENDPOINT
@@ -1070,20 +1171,32 @@ def build_soar_action(
     if action_type == "isolate_endpoint":
 
         target = (
-            incident.get("hostname")
-            or incident.get("endpoint")
-            or incident.get("device_name")
-            or incident.get("target")
+            incident.get(
+                "hostname"
+            )
+            or incident.get(
+                "endpoint"
+            )
+            or incident.get(
+                "device_name"
+            )
+            or incident.get(
+                "target"
+            )
         )
 
         if not SOARService.is_safe_endpoint_target(
             target
         ):
 
-            action_type = "create_ticket"
+            action_type = (
+                "create_ticket"
+            )
 
             target = (
-                incident.get("hostname")
+                incident.get(
+                    "hostname"
+                )
                 or (
                     f"incident-"
                     f"{incident.get('id', 'unknown')}"
@@ -1097,21 +1210,35 @@ def build_soar_action(
     elif action_type == "block_ip":
 
         target = (
-            incident.get("ip_address")
-            or incident.get("source_ip")
-            or incident.get("src_ip")
-            or incident.get("ip")
-            or incident.get("target")
+            incident.get(
+                "ip_address"
+            )
+            or incident.get(
+                "source_ip"
+            )
+            or incident.get(
+                "src_ip"
+            )
+            or incident.get(
+                "ip"
+            )
+            or incident.get(
+                "target"
+            )
         )
 
         if not SOARService.is_safe_ip_target(
             target
         ):
 
-            action_type = "create_ticket"
+            action_type = (
+                "create_ticket"
+            )
 
             target = (
-                incident.get("hostname")
+                incident.get(
+                    "hostname"
+                )
                 or (
                     f"incident-"
                     f"{incident.get('id', 'unknown')}"
@@ -1125,18 +1252,30 @@ def build_soar_action(
     elif action_type == "disable_user":
 
         target = (
-            incident.get("username")
-            or incident.get("user")
-            or incident.get("account")
-            or incident.get("target")
+            incident.get(
+                "username"
+            )
+            or incident.get(
+                "user"
+            )
+            or incident.get(
+                "account"
+            )
+            or incident.get(
+                "target"
+            )
         )
 
         if not target:
 
-            action_type = "create_ticket"
+            action_type = (
+                "create_ticket"
+            )
 
             target = (
-                incident.get("hostname")
+                incident.get(
+                    "hostname"
+                )
                 or (
                     f"incident-"
                     f"{incident.get('id', 'unknown')}"
@@ -1163,9 +1302,15 @@ def build_soar_action(
     else:
 
         target = (
-            incident.get("hostname")
-            or incident.get("endpoint")
-            or incident.get("target")
+            incident.get(
+                "hostname"
+            )
+            or incident.get(
+                "endpoint"
+            )
+            or incident.get(
+                "target"
+            )
             or (
                 f"incident-"
                 f"{incident.get('id', 'unknown')}"
@@ -1178,7 +1323,9 @@ def build_soar_action(
 
     if not target:
 
-        action_type = "create_ticket"
+        action_type = (
+            "create_ticket"
+        )
 
         target = (
             f"incident-"
@@ -1187,7 +1334,9 @@ def build_soar_action(
 
     return {
         "incident_id": (
-            incident.get("id")
+            incident.get(
+                "id"
+            )
         ),
 
         "action_type": (
@@ -1242,11 +1391,13 @@ def response_agent(
     ).lower().strip()
 
     high_risk = (
-        ai_risk in {
+        ai_risk
+        in {
             "high",
             "critical",
         }
-        or incident_severity in {
+        or incident_severity
+        in {
             "high",
             "critical",
         }
@@ -1272,7 +1423,9 @@ def response_agent(
             )
         ),
 
-        "risk_level": ai_risk,
+        "risk_level": (
+            ai_risk
+        ),
 
         "automatic_execution": False,
 
@@ -1307,9 +1460,13 @@ def response_agent(
         )
 
     return {
-        "response": response,
+        "response": (
+            response
+        ),
 
-        "soar_action": soar_action,
+        "soar_action": (
+            soar_action
+        ),
 
         "agent_trace": [
             "Response"
@@ -1366,11 +1523,18 @@ def report_agent(
     )
 
     rag_sources = [
-        item.get("source")
+        item.get(
+            "source"
+        )
         for item in rag_context
         if (
-            isinstance(item, dict)
-            and item.get("source")
+            isinstance(
+                item,
+                dict,
+            )
+            and item.get(
+                "source"
+            )
         )
     ]
 
@@ -1399,6 +1563,10 @@ def report_agent(
             )
         ),
 
+        # =================================================
+        # MACHINE LEARNING
+        # =================================================
+
         "ml_status": (
             ml_analysis.get(
                 "status"
@@ -1412,6 +1580,7 @@ def report_agent(
         ),
 
         "ml_probabilities": {
+
             "BENIGN": (
                 ml_analysis.get(
                     "benign_probability"
@@ -1443,6 +1612,10 @@ def report_agent(
             ),
         },
 
+        # =================================================
+        # MITRE ATT&CK
+        # =================================================
+
         "mitre_technique": (
             mitre_validation.get(
                 "technique_id"
@@ -1460,6 +1633,10 @@ def report_agent(
                 "valid"
             )
         ),
+
+        # =================================================
+        # RESPONSE
+        # =================================================
 
         "recommendation": (
             investigation.get(
@@ -1502,6 +1679,10 @@ def report_agent(
             rag_sources
         ),
 
+        # =================================================
+        # MULTI-SOURCE CORRELATION
+        # =================================================
+
         "correlation_id": (
             investigation.get(
                 "correlation_id"
@@ -1521,10 +1702,19 @@ def report_agent(
                 [],
             )
         ),
+
+        "correlation_confidence": (
+            investigation.get(
+                "correlation_confidence",
+                "single_source",
+            )
+        ),
     }
 
     return {
-        "report": report,
+        "report": (
+            report
+        ),
 
         "agent_trace": [
             "Report"
