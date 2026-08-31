@@ -448,6 +448,92 @@ class CorrelationService:
             )
         )
 
+        # =====================================================
+    # BUILD CORRELATION SUMMARY
+    # =====================================================
+
+    @staticmethod
+    def build_correlation_summary(
+        incident: dict,
+        correlated_incidents: list[dict],
+    ) -> dict:
+        """
+        Build a normalized multi-source correlation summary.
+
+        Confidence is based on the number of independent
+        sensor sources contributing to the same activity.
+        """
+
+        detected_sources = set()
+
+        primary_source = incident.get(
+            "source"
+        )
+
+        if primary_source:
+            detected_sources.add(
+                str(primary_source)
+            )
+
+        for correlated in correlated_incidents:
+
+            if not isinstance(
+                correlated,
+                dict,
+            ):
+                continue
+
+            correlated_source = (
+                correlated.get(
+                    "source"
+                )
+            )
+
+            if correlated_source:
+                detected_sources.add(
+                    str(correlated_source)
+                )
+
+        source_count = len(
+            detected_sources
+        )
+
+        if source_count >= 3:
+            confidence = "high"
+
+        elif source_count == 2:
+            confidence = "medium"
+
+        else:
+            confidence = "single_source"
+
+        return {
+            "source": "multi_source_correlation",
+
+            "correlation_id": (
+                incident.get(
+                    "correlation_id"
+                )
+            ),
+
+            "source_count": (
+                source_count
+            ),
+
+            "sources": sorted(
+                detected_sources
+            ),
+
+            "confidence": (
+                confidence
+            ),
+
+            "correlated_incident_count": (
+                len(
+                    correlated_incidents
+                )
+            ),
+        }
     # =====================================================
     # MARK AS CORRELATED
     # =====================================================

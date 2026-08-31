@@ -19,7 +19,7 @@ from app.services.soar_service import SOARService
 from app.services.threat_intelligence_service import (
     ThreatIntelligenceService,
 )
-
+from app.services.correlation_service import CorrelationService
 
 # =========================================================
 # STATE
@@ -706,55 +706,23 @@ def investigation_agent(
         detected_sources
     )
 
-    # -----------------------------------------------------
-    # Confidence based on independent sensor sources
-    # -----------------------------------------------------
+        # =====================================================
+    # MULTI-SOURCE CORRELATION CONFIDENCE
+    # =====================================================
 
-    if source_count >= 3:
-
-        correlation_confidence = (
-            "high"
+    correlation_summary = (
+        CorrelationService.build_correlation_summary(
+            incident=incident,
+            correlated_incidents=correlated_incidents,
         )
+    )
 
-    elif source_count == 2:
-
-        correlation_confidence = (
-            "medium"
+    correlation_confidence = (
+        correlation_summary.get(
+            "confidence",
+            "single_source",
         )
-
-    else:
-
-        correlation_confidence = (
-            "single_source"
-        )
-
-    correlation_summary = {
-        "source": "multi_source_correlation",
-
-        "correlation_id": (
-            incident.get(
-                "correlation_id"
-            )
-        ),
-
-        "source_count": (
-            source_count
-        ),
-
-        "sources": sorted(
-            detected_sources
-        ),
-
-        "confidence": (
-            correlation_confidence
-        ),
-
-        "correlated_incident_count": (
-            len(
-                correlated_incidents
-            )
-        ),
-    }
+    )
 
     # =====================================================
     # FINAL INVESTIGATION CONTEXT
