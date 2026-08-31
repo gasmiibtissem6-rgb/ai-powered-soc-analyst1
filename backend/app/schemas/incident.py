@@ -7,8 +7,10 @@ from pydantic import BaseModel, ConfigDict
 class IncidentBase(BaseModel):
     title: str
     description: Optional[str] = None
+
     severity: str = "medium"
     status: str = "open"
+
     source: Optional[str] = None
 
     hostname: Optional[str] = None
@@ -17,6 +19,8 @@ class IncidentBase(BaseModel):
     username: Optional[str] = None
 
     assigned_to: Optional[str] = None
+
+    correlation_id: Optional[str] = None
 
 
 class IncidentCreate(IncidentBase):
@@ -26,8 +30,10 @@ class IncidentCreate(IncidentBase):
 class IncidentUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+
     severity: Optional[str] = None
     status: Optional[str] = None
+
     source: Optional[str] = None
 
     hostname: Optional[str] = None
@@ -36,6 +42,8 @@ class IncidentUpdate(BaseModel):
     username: Optional[str] = None
 
     assigned_to: Optional[str] = None
+
+    correlation_id: Optional[str] = None
 
 
 class IncidentResponse(IncidentBase):

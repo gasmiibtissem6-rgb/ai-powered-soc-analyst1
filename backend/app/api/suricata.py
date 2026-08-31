@@ -9,7 +9,7 @@ from app.api.agents import run_soc_workflow
 from app.database.session import get_db
 from app.models.incident import Incident
 from app.services.suricata_service import SuricataService
-
+from app.services.correlation_service import CorrelationService
 
 router = APIRouter(
     prefix="/suricata",
@@ -187,14 +187,20 @@ def receive_suricata_alert(
             },
         }
 
-    # ==================================================
-    # 3. Create incident
+        # ==================================================
+    # 3. Create incident + correlation
     # ==================================================
 
     try:
         incident = service.create_incident_from_alert(
             db=db,
             alert=alert,
+        )
+
+        CorrelationService.correlate_incident(
+            db=db,
+            incident=incident,
+            window_minutes=5,
         )
 
     except Exception as exc:
@@ -217,10 +223,11 @@ def receive_suricata_alert(
                 status.HTTP_500_INTERNAL_SERVER_ERROR
             ),
             detail=(
-                "Unable to create incident from "
+                "Unable to create/correlate incident from "
                 f"Suricata alert: {str(exc)}"
             ),
         )
+      
 
     # ==================================================
     # 4. Start SOC multi-agent workflow

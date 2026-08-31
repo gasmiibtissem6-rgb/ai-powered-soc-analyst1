@@ -86,6 +86,16 @@ class Incident(Base):
         nullable=True,
     )
 
+    # --------------------------------------------------
+    # Correlation
+    # --------------------------------------------------
+
+    correlation_id: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        index=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow,

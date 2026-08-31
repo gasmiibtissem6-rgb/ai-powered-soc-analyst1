@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.agents import run_soc_workflow
 from app.database.session import get_db
 from app.models.incident import Incident
+from app.services.correlation_service import CorrelationService
 from app.services.wazuh_service import WazuhService
 
 
@@ -82,7 +83,7 @@ def receive_wazuh_alert(
     Steps:
     1. Normalize the Wazuh alert.
     2. Check for a recent duplicate.
-    3. Create a SOC incident.
+    3. Create and correlate the SOC incident.
     4. Start the multi-agent SOC workflow.
     5. Keep the incident even if the AI workflow fails.
     """
@@ -94,7 +95,9 @@ def receive_wazuh_alert(
     # ==================================================
 
     try:
-        normalized = service.normalize_alert(alert)
+        normalized = service.normalize_alert(
+            alert
+        )
 
     except Exception as exc:
         print(
@@ -189,6 +192,12 @@ def receive_wazuh_alert(
                     duplicate.destination_ip
                 ),
                 "username": duplicate.username,
+                "correlation_id": (
+                    duplicate.correlation_id
+                ),
+                "workflow_status": (
+                    duplicate.workflow_status
+                ),
             },
             "workflow": {
                 "status": "not_started",
@@ -197,13 +206,19 @@ def receive_wazuh_alert(
         }
 
     # ==================================================
-    # 3. Create incident
+    # 3. Create incident + correlation
     # ==================================================
 
     try:
         incident = service.create_incident_from_alert(
             db=db,
             alert=alert,
+        )
+
+        CorrelationService.correlate_incident(
+            db=db,
+            incident=incident,
+            window_minutes=5,
         )
 
     except Exception as exc:
@@ -226,7 +241,7 @@ def receive_wazuh_alert(
                 status.HTTP_500_INTERNAL_SERVER_ERROR
             ),
             detail=(
-                "Unable to create incident from "
+                "Unable to create/correlate incident from "
                 f"Wazuh alert: {str(exc)}"
             ),
         )
@@ -312,6 +327,15 @@ def receive_wazuh_alert(
                     incident.destination_ip
                 ),
                 "username": incident.username,
+                "correlation_id": (
+                    incident.correlation_id
+                ),
+                "workflow_status": (
+                    incident.workflow_status
+                ),
+                "workflow_error": (
+                    incident.workflow_error
+                ),
             },
             "workflow": {
                 "status": "error",
@@ -368,6 +392,15 @@ def receive_wazuh_alert(
                 incident.destination_ip
             ),
             "username": incident.username,
+            "correlation_id": (
+                incident.correlation_id
+            ),
+            "workflow_status": (
+                incident.workflow_status
+            ),
+            "workflow_error": (
+                incident.workflow_error
+            ),
         },
         "workflow": workflow_result,
     }
