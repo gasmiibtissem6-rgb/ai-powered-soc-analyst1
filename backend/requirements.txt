@@ -63,3 +63,4 @@ uuid_utils==0.15.0
 uvicorn==0.39.0
 xxhash==3.8.1
 zstandard==0.25.0
+pytest==8.4.2
