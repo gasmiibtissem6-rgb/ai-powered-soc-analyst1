@@ -11,10 +11,34 @@ from app.api import agents
 from app.api import reports
 from app.api import soar
 from app.api import suricata
+import asyncio
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from app.services.workflow_retry_service import workflow_retry_loop
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    retry_task = asyncio.create_task(
+        workflow_retry_loop()
+    )
+
+    try:
+        yield
+
+    finally:
+        retry_task.cancel()
+
+        try:
+            await retry_task
+
+        except asyncio.CancelledError:
+            pass
 app = FastAPI(
     title="AI-Powered SOC Analyst API",
     description="Backend API for the intelligent SOC platform",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 
