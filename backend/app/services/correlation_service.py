@@ -10,12 +10,16 @@ from app.models.incident import Incident
 
 class CorrelationService:
     """
-    Correlate SOC incidents coming from different sources
-    such as Wazuh and Suricata.
+    Correlate SOC incidents coming from different sources.
 
-    The oldest incident in a correlation group is considered
-    the primary incident and is responsible for running the
-    complete SOC workflow.
+    Correlation uses:
+    - time window
+    - source/destination IP pair
+    - activity category
+    - source diversity
+
+    The oldest incident in a correlation group is the
+    primary incident and runs the complete SOC workflow.
     """
 
     # =====================================================
@@ -24,11 +28,148 @@ class CorrelationService:
 
     @staticmethod
     def generate_correlation_id() -> str:
+        return f"SOC-{uuid4().hex}"
+
+    # =====================================================
+    # CLASSIFY INCIDENT ACTIVITY
+    # =====================================================
+
+    @staticmethod
+    def classify_activity(
+        title: Optional[str],
+        description: Optional[str] = None,
+    ) -> str:
         """
-        Generate a unique correlation identifier.
+        Infer a broad activity category from incident text.
+
+        This avoids correlating unrelated alerts that only
+        happen to share the same IP pair.
         """
 
-        return f"SOC-{uuid4().hex}"
+        text = (
+            f"{title or ''} "
+            f"{description or ''}"
+        ).lower()
+
+        # -------------------------------------------------
+        # Network scan / discovery
+        # -------------------------------------------------
+
+        scan_keywords = (
+            "nmap",
+            "port scan",
+            "network scan",
+            "tcp syn port scan",
+            "network service discovery",
+            "reconnaissance",
+        )
+
+        if any(
+            keyword in text
+            for keyword in scan_keywords
+        ):
+            return "network_scan"
+
+        # -------------------------------------------------
+        # Authentication
+        # -------------------------------------------------
+
+        auth_keywords = (
+            "authentication",
+            "login",
+            "failed password",
+            "invalid user",
+            "brute force",
+            "sshd",
+            "pam",
+        )
+
+        if any(
+            keyword in text
+            for keyword in auth_keywords
+        ):
+            return "authentication"
+
+        # -------------------------------------------------
+        # HTTP / web
+        # -------------------------------------------------
+
+        http_keywords = (
+            "http",
+            "cleartext",
+            "client body",
+            "web",
+            "uri",
+            "request",
+        )
+
+        if any(
+            keyword in text
+            for keyword in http_keywords
+        ):
+            return "http"
+
+        # -------------------------------------------------
+        # Malware
+        # -------------------------------------------------
+
+        malware_keywords = (
+            "malware",
+            "trojan",
+            "ransomware",
+            "virus",
+            "backdoor",
+        )
+
+        if any(
+            keyword in text
+            for keyword in malware_keywords
+        ):
+            return "malware"
+
+        return "generic"
+
+    # =====================================================
+    # ACTIVITY COMPATIBILITY
+    # =====================================================
+
+    @staticmethod
+    def activities_are_compatible(
+        first: Incident,
+        second: Incident,
+    ) -> bool:
+        """
+        Return True when two incidents are similar enough
+        to belong to the same security activity.
+        """
+
+        first_category = (
+            CorrelationService.classify_activity(
+                first.title,
+                first.description,
+            )
+        )
+
+        second_category = (
+            CorrelationService.classify_activity(
+                second.title,
+                second.description,
+            )
+        )
+
+        # Exact activity category is preferred
+        if first_category == second_category:
+            return True
+
+        # Generic incidents are not strong enough to merge
+        # with a clearly classified security activity.
+        if (
+            first_category == "generic"
+            or second_category == "generic"
+        ):
+            return False
+
+        return False
 
     # =====================================================
     # FIND RELATED INCIDENT
@@ -41,26 +182,20 @@ class CorrelationService:
         source_ip: Optional[str] = None,
         destination_ip: Optional[str] = None,
         hostname: Optional[str] = None,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
         window_minutes: int = 5,
     ) -> Optional[Incident]:
         """
-        Look for a recent incident from another source
-        that may belong to the same security activity.
-
-        Correlation rules:
-
-        1. Preferred:
-           exact same source/destination pair.
-
-        2. Also accepted:
-           reverse source/destination pair.
-
-        3. Hostname is used only as a fallback when
-           network IP information is incomplete.
+        Look for a recent incident from another source that
+        belongs to the same security activity.
         """
 
-        created_after = datetime.utcnow() - timedelta(
-            minutes=window_minutes
+        created_after = (
+            datetime.utcnow()
+            - timedelta(
+                minutes=window_minutes
+            )
         )
 
         query = (
@@ -95,7 +230,7 @@ class CorrelationService:
             )
 
         # -------------------------------------------------
-        # Source IP only
+        # Partial network correlation
         # -------------------------------------------------
 
         elif source_ip:
@@ -104,19 +239,11 @@ class CorrelationService:
                 Incident.source_ip == source_ip
             )
 
-        # -------------------------------------------------
-        # Destination IP only
-        # -------------------------------------------------
-
         elif destination_ip:
 
             query = query.filter(
                 Incident.destination_ip == destination_ip
             )
-
-        # -------------------------------------------------
-        # Hostname fallback
-        # -------------------------------------------------
 
         elif hostname:
 
@@ -127,13 +254,42 @@ class CorrelationService:
         else:
             return None
 
-        return (
+        candidates = (
             query.order_by(
                 Incident.created_at.desc(),
                 Incident.id.desc(),
             )
-            .first()
+            .limit(20)
+            .all()
         )
+
+        # -------------------------------------------------
+        # Activity-aware filtering
+        # -------------------------------------------------
+
+        current_activity = (
+            CorrelationService.classify_activity(
+                title,
+                description,
+            )
+        )
+
+        for candidate in candidates:
+
+            candidate_activity = (
+                CorrelationService.classify_activity(
+                    candidate.title,
+                    candidate.description,
+                )
+            )
+
+            if (
+                current_activity
+                == candidate_activity
+            ):
+                return candidate
+
+        return None
 
     # =====================================================
     # CORRELATE INCIDENT
@@ -148,22 +304,25 @@ class CorrelationService:
         """
         Assign a correlation_id to an incident.
 
-        If a related recent incident already exists,
-        both incidents receive the same correlation_id.
-
-        Otherwise a new correlation_id is generated.
+        Related incidents must match both:
+        - network identity
+        - activity category
         """
 
         if incident.correlation_id:
             return incident.correlation_id
 
-        related = CorrelationService.find_related_incident(
-            db=db,
-            source=incident.source,
-            source_ip=incident.source_ip,
-            destination_ip=incident.destination_ip,
-            hostname=incident.hostname,
-            window_minutes=window_minutes,
+        related = (
+            CorrelationService.find_related_incident(
+                db=db,
+                source=incident.source,
+                source_ip=incident.source_ip,
+                destination_ip=incident.destination_ip,
+                hostname=incident.hostname,
+                title=incident.title,
+                description=incident.description,
+                window_minutes=window_minutes,
+            )
         )
 
         # -------------------------------------------------
@@ -178,9 +337,13 @@ class CorrelationService:
             )
 
             if not related.correlation_id:
-                related.correlation_id = correlation_id
+                related.correlation_id = (
+                    correlation_id
+                )
 
-            incident.correlation_id = correlation_id
+            incident.correlation_id = (
+                correlation_id
+            )
 
             try:
                 db.commit()
@@ -201,7 +364,9 @@ class CorrelationService:
             CorrelationService.generate_correlation_id()
         )
 
-        incident.correlation_id = correlation_id
+        incident.correlation_id = (
+            correlation_id
+        )
 
         try:
             db.commit()
@@ -222,9 +387,6 @@ class CorrelationService:
         db: Session,
         correlation_id: str,
     ) -> Optional[Incident]:
-        """
-        Return the oldest incident in a correlation group.
-        """
 
         if not correlation_id:
             return None
@@ -232,7 +394,8 @@ class CorrelationService:
         return (
             db.query(Incident)
             .filter(
-                Incident.correlation_id == correlation_id
+                Incident.correlation_id
+                == correlation_id
             )
             .order_by(
                 Incident.created_at.asc(),
@@ -250,17 +413,17 @@ class CorrelationService:
         db: Session,
         incident: Incident,
     ) -> bool:
-        """
-        Return True only if this incident is the primary
-        incident of its correlation group.
-        """
 
         if not incident.correlation_id:
             return True
 
-        primary = CorrelationService.get_primary_incident(
-            db=db,
-            correlation_id=incident.correlation_id,
+        primary = (
+            CorrelationService.get_primary_incident(
+                db=db,
+                correlation_id=(
+                    incident.correlation_id
+                ),
+            )
         )
 
         if not primary:
@@ -277,14 +440,12 @@ class CorrelationService:
         db: Session,
         incident: Incident,
     ) -> bool:
-        """
-        Only the primary incident in a correlation group
-        runs the complete SOC workflow.
-        """
 
-        return CorrelationService.is_primary_incident(
-            db=db,
-            incident=incident,
+        return (
+            CorrelationService.is_primary_incident(
+                db=db,
+                incident=incident,
+            )
         )
 
     # =====================================================
@@ -296,9 +457,6 @@ class CorrelationService:
         db: Session,
         incident: Incident,
     ) -> None:
-        """
-        Mark a secondary incident as correlated.
-        """
 
         incident.workflow_status = "correlated"
         incident.workflow_error = None
