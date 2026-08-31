@@ -1,20 +1,21 @@
 import operator
 
-from typing import TypedDict, Literal, Annotated
+from typing import Annotated, Literal, TypedDict
 
 from psycopg import Connection
 from psycopg.rows import dict_row
 
 from langgraph.checkpoint.postgres import PostgresSaver
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from app.core.config import settings
 
 from app.services.llm_service import LLMService
 from app.services.mitre_service import MitreService
-from app.services.rag_service import RAGService
 from app.services.ml_service import MLService
+from app.services.rag_service import RAGService
+from app.services.soar_service import SOARService
 from app.services.threat_intelligence_service import (
     ThreatIntelligenceService,
 )
@@ -107,7 +108,7 @@ def machine_learning_agent(
     )
 
     # -----------------------------------------------------
-    # Aucun vecteur ML fourni
+    # No ML feature vector provided
     # -----------------------------------------------------
 
     if (
@@ -134,7 +135,7 @@ def machine_learning_agent(
         }
 
     # -----------------------------------------------------
-    # Prédiction avec Random Forest
+    # Random Forest prediction
     # -----------------------------------------------------
 
     try:
@@ -188,7 +189,7 @@ def threat_intelligence_agent(
     analyzed_ips = set()
 
     # -----------------------------------------------------
-    # 1. Analyze source_ip directly
+    # Analyze source_ip directly
     # -----------------------------------------------------
 
     source_ip = incident.get(
@@ -196,7 +197,9 @@ def threat_intelligence_agent(
     )
 
     if source_ip:
+
         try:
+
             result = service.check_ip(
                 source_ip
             )
@@ -210,6 +213,7 @@ def threat_intelligence_agent(
             )
 
         except Exception as exc:
+
             results.append(
                 {
                     "ip_address": source_ip,
@@ -221,7 +225,7 @@ def threat_intelligence_agent(
             )
 
     # -----------------------------------------------------
-    # 2. Analyze other IPs present in text
+    # Analyze IPs present in incident text
     # -----------------------------------------------------
 
     text = (
@@ -235,11 +239,12 @@ def threat_intelligence_agent(
 
     for ip_address in extracted_ips:
 
-        # Avoid checking same IP twice
+        # Avoid checking the same IP twice
         if ip_address in analyzed_ips:
             continue
 
         try:
+
             result = service.check_ip(
                 ip_address
             )
@@ -253,6 +258,7 @@ def threat_intelligence_agent(
             )
 
         except Exception as exc:
+
             results.append(
                 {
                     "ip_address": ip_address,
@@ -270,9 +276,6 @@ def threat_intelligence_agent(
             "Threat Intelligence"
         ],
     }
-
-
-
 
 
 # =========================================================
@@ -326,7 +329,7 @@ def investigation_agent(
         rag_context = []
 
     # -----------------------------------------------------
-    # Ajouter le résultat ML dans le contexte
+    # Add ML result to investigation context
     # -----------------------------------------------------
 
     ml_context = []
@@ -344,31 +347,37 @@ def investigation_agent(
         ml_context = [
             {
                 "source": "machine_learning",
+
                 "prediction": (
                     ml_analysis.get(
                         "prediction"
                     )
                 ),
+
                 "benign_probability": (
                     ml_analysis.get(
                         "benign_probability"
                     )
                 ),
+
                 "ddos_probability": (
                     ml_analysis.get(
                         "ddos_probability"
                     )
                 ),
+
                 "portscan_probability": (
                     ml_analysis.get(
                         "portscan_probability"
                     )
                 ),
+
                 "ftp_patator_probability": (
                     ml_analysis.get(
                         "ftp_patator_probability"
                     )
                 ),
+
                 "ssh_patator_probability": (
                     ml_analysis.get(
                         "ssh_patator_probability"
@@ -419,7 +428,7 @@ def investigation_agent(
     )
 
     # -----------------------------------------------------
-    # Ajouter ML au résultat d'investigation
+    # Add ML result to investigation result
     # -----------------------------------------------------
 
     result["ml_analysis"] = (
@@ -430,9 +439,7 @@ def investigation_agent(
     # MITRE ATT&CK VALIDATION
     # -----------------------------------------------------
 
-    mitre_service = (
-        MitreService()
-    )
+    mitre_service = MitreService()
 
     mitre_value = result.get(
         "mitre_technique",
@@ -676,12 +683,24 @@ def build_soar_action(
     incident: dict,
     recommendation: str,
 ) -> dict:
+    """
+    Build a safe SOAR action from the AI recommendation.
+
+    Safety rules:
+    - Invalid endpoint isolation -> create_ticket
+    - Invalid/protected IP blocking -> create_ticket
+    - Missing user for disable_user -> create_ticket
+    """
 
     recommendation_lower = str(
         recommendation or ""
     ).lower()
 
     action_type = "create_ticket"
+
+    # =====================================================
+    # DETERMINE ACTION TYPE
+    # =====================================================
 
     if "isolate" in recommendation_lower:
 
@@ -711,9 +730,9 @@ def build_soar_action(
 
         action_type = "send_notification"
 
-    # -----------------------------------------------------
-    # Target
-    # -----------------------------------------------------
+    # =====================================================
+    # ISOLATE ENDPOINT
+    # =====================================================
 
     if action_type == "isolate_endpoint":
 
@@ -722,41 +741,12 @@ def build_soar_action(
             or incident.get("endpoint")
             or incident.get("device_name")
             or incident.get("target")
-            or "unknown-endpoint"
         )
 
-    elif action_type == "block_ip":
+        if not SOARService.is_safe_endpoint_target(
+            target
+        ):
 
-        target = (
-            incident.get("ip_address")
-            or incident.get("source_ip")
-            or incident.get("src_ip")
-            or incident.get("ip")
-            or incident.get("target")
-            or "unknown-ip"
-        )
-
-        # -------------------------------------------------
-        # Safety policy before SOAR action creation
-        # -------------------------------------------------
-
-        try:
-            from app.services.soar_service import SOARService
-
-            if not SOARService.is_safe_ip_target(
-                target
-            ):
-                action_type = "create_ticket"
-
-                target = (
-                    incident.get("hostname")
-                    or (
-                        f"incident-"
-                        f"{incident.get('id', 'unknown')}"
-                    )
-                )
-
-        except Exception:
             action_type = "create_ticket"
 
             target = (
@@ -767,61 +757,9 @@ def build_soar_action(
                 )
             )
 
-    elif action_type == "disable_user":
-
-        target = (
-            incident.get("username")
-            or incident.get("user")
-            or incident.get("account")
-            or incident.get("target")
-            or "unknown-user"
-        )
-
-    elif action_type == "send_notification":
-
-        target = (
-            incident.get(
-                "notification_target"
-            )
-            or "soc-team"
-        )
-
-    else:
-
-        target = (
-            incident.get("hostname")
-            or incident.get("endpoint")
-            or incident.get("target")
-            or (
-                f"incident-"
-                f"{incident.get('id', 'unknown')}"
-            )
-        )
-
-    return {
-        "incident_id": incident.get("id"),
-        "action_type": action_type,
-        "target": target,
-        "requires_approval": True,
-        "status": "proposed",
-    }
-
-    
-    
-
-    # -----------------------------------------------------
-    # Target
-    # -----------------------------------------------------
-
-    if action_type == "isolate_endpoint":
-
-        target = (
-            incident.get("hostname")
-            or incident.get("endpoint")
-            or incident.get("device_name")
-            or incident.get("target")
-            or "unknown-endpoint"
-        )
+    # =====================================================
+    # BLOCK IP
+    # =====================================================
 
     elif action_type == "block_ip":
 
@@ -831,8 +769,25 @@ def build_soar_action(
             or incident.get("src_ip")
             or incident.get("ip")
             or incident.get("target")
-            or "unknown-ip"
         )
+
+        if not SOARService.is_safe_ip_target(
+            target
+        ):
+
+            action_type = "create_ticket"
+
+            target = (
+                incident.get("hostname")
+                or (
+                    f"incident-"
+                    f"{incident.get('id', 'unknown')}"
+                )
+            )
+
+    # =====================================================
+    # DISABLE USER
+    # =====================================================
 
     elif action_type == "disable_user":
 
@@ -841,8 +796,23 @@ def build_soar_action(
             or incident.get("user")
             or incident.get("account")
             or incident.get("target")
-            or "unknown-user"
         )
+
+        if not target:
+
+            action_type = "create_ticket"
+
+            target = (
+                incident.get("hostname")
+                or (
+                    f"incident-"
+                    f"{incident.get('id', 'unknown')}"
+                )
+            )
+
+    # =====================================================
+    # SEND NOTIFICATION
+    # =====================================================
 
     elif action_type == "send_notification":
 
@@ -852,6 +822,10 @@ def build_soar_action(
             )
             or "soc-team"
         )
+
+    # =====================================================
+    # CREATE TICKET / DEFAULT
+    # =====================================================
 
     else:
 
@@ -863,6 +837,19 @@ def build_soar_action(
                 f"incident-"
                 f"{incident.get('id', 'unknown')}"
             )
+        )
+
+    # =====================================================
+    # FINAL SAFETY FALLBACK
+    # =====================================================
+
+    if not target:
+
+        action_type = "create_ticket"
+
+        target = (
+            f"incident-"
+            f"{incident.get('id', 'unknown')}"
         )
 
     return {
@@ -1149,6 +1136,10 @@ def report_agent(
             )
         ),
 
+        # -------------------------------------------------
+        # RESPONSE
+        # -------------------------------------------------
+
         "recommendation": (
             investigation.get(
                 "recommendation"
@@ -1346,7 +1337,7 @@ checkpointer = PostgresSaver(
 )
 
 
-# Crée les tables LangGraph si nécessaire
+# Create LangGraph tables when necessary
 checkpointer.setup()
 
 

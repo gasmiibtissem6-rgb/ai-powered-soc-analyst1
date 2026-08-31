@@ -10,21 +10,42 @@ from app.schemas.soar_action import SOARActionCreate
 
 class SOARService:
 
+    # =====================================================
+    # GET ALL ACTIONS
+    # =====================================================
+
     @staticmethod
-    def get_actions(db: Session):
+    def get_actions(
+        db: Session,
+    ):
         return (
             db.query(SOARAction)
-            .order_by(SOARAction.id.desc())
+            .order_by(
+                SOARAction.id.desc()
+            )
             .all()
         )
 
+    # =====================================================
+    # GET ONE ACTION
+    # =====================================================
+
     @staticmethod
-    def get_action(db: Session, action_id: int):
+    def get_action(
+        db: Session,
+        action_id: int,
+    ):
         return (
             db.query(SOARAction)
-            .filter(SOARAction.id == action_id)
+            .filter(
+                SOARAction.id == action_id
+            )
             .first()
         )
+
+    # =====================================================
+    # CREATE ACTION
+    # =====================================================
 
     @staticmethod
     def create_action(
@@ -33,7 +54,9 @@ class SOARService:
     ):
         incident = (
             db.query(Incident)
-            .filter(Incident.id == data.incident_id)
+            .filter(
+                Incident.id == data.incident_id
+            )
             .first()
         )
 
@@ -48,11 +71,20 @@ class SOARService:
             status="pending",
         )
 
-        db.add(action)
-        db.commit()
-        db.refresh(action)
+        try:
+            db.add(action)
+            db.commit()
+            db.refresh(action)
+
+        except Exception:
+            db.rollback()
+            raise
 
         return action
+
+    # =====================================================
+    # APPROVE ACTION
+    # =====================================================
 
     @staticmethod
     def approve_action(
@@ -60,20 +92,93 @@ class SOARService:
         action_id: int,
     ):
         action = SOARService.get_action(
-            db,
-            action_id,
+            db=db,
+            action_id=action_id,
         )
 
         if not action:
             return None
 
+        # -------------------------------------------------
+        # Safety: invalid endpoint cannot be approved
+        # -------------------------------------------------
+
+        if action.action_type == "isolate_endpoint":
+
+            if not SOARService.is_safe_endpoint_target(
+                action.target
+            ):
+                action.approved = False
+                action.status = "blocked_by_safety"
+
+                action.result = {
+                    "success": False,
+                    "message": (
+                        "SOAR safety policy prevented "
+                        "approval of an invalid endpoint "
+                        "isolation target."
+                    ),
+                    "target": action.target,
+                }
+
+                try:
+                    db.commit()
+                    db.refresh(action)
+
+                except Exception:
+                    db.rollback()
+                    raise
+
+                return action
+
+        # -------------------------------------------------
+        # Safety: invalid IP cannot be approved for blocking
+        # -------------------------------------------------
+
+        if action.action_type == "block_ip":
+
+            if not SOARService.is_safe_ip_target(
+                action.target
+            ):
+                action.approved = False
+                action.status = "blocked_by_safety"
+
+                action.result = {
+                    "success": False,
+                    "message": (
+                        "SOAR safety policy prevented "
+                        "approval of an invalid or "
+                        "protected IP target."
+                    ),
+                    "target": action.target,
+                }
+
+                try:
+                    db.commit()
+                    db.refresh(action)
+
+                except Exception:
+                    db.rollback()
+                    raise
+
+                return action
+
         action.approved = True
         action.status = "approved"
 
-        db.commit()
-        db.refresh(action)
+        try:
+            db.commit()
+            db.refresh(action)
+
+        except Exception:
+            db.rollback()
+            raise
 
         return action
+
+    # =====================================================
+    # REJECT ACTION
+    # =====================================================
 
     @staticmethod
     def reject_action(
@@ -81,8 +186,8 @@ class SOARService:
         action_id: int,
     ):
         action = SOARService.get_action(
-            db,
-            action_id,
+            db=db,
+            action_id=action_id,
         )
 
         if not action:
@@ -91,28 +196,42 @@ class SOARService:
         action.approved = False
         action.status = "rejected"
 
-        db.commit()
-        db.refresh(action)
+        try:
+            db.commit()
+            db.refresh(action)
+
+        except Exception:
+            db.rollback()
+            raise
 
         return action
 
+    # =====================================================
+    # IP SAFETY
+    # =====================================================
+
     @staticmethod
-    def is_safe_ip_target(target: str) -> bool:
+    def is_safe_ip_target(
+        target: str,
+    ) -> bool:
         """
-        Return False when the IP must not be blocked.
+        Return False when an IP must not be blocked.
 
         Protected examples:
-        - 127.0.0.1
-        - localhost/loopback addresses
-        - unspecified addresses such as 0.0.0.0
+        - loopback addresses
+        - unspecified addresses
         - multicast addresses
+        - invalid strings
         """
 
         if not target:
             return False
 
         try:
-            ip = ip_address(target)
+            ip = ip_address(
+                target.strip()
+            )
+
         except ValueError:
             return False
 
@@ -127,18 +246,61 @@ class SOARService:
 
         return True
 
+    # =====================================================
+    # ENDPOINT SAFETY
+    # =====================================================
+
+    @staticmethod
+    def is_safe_endpoint_target(
+        target: str,
+    ) -> bool:
+        """
+        Return False when an endpoint isolation target
+        is empty, unknown, or otherwise unusable.
+        """
+
+        if not target:
+            return False
+
+        normalized = target.strip().lower()
+
+        unsafe_values = {
+            "",
+            "unknown",
+            "unknown-endpoint",
+            "unknown_endpoint",
+            "none",
+            "null",
+            "n/a",
+            "na",
+            "undefined",
+        }
+
+        if normalized in unsafe_values:
+            return False
+
+        return True
+
+    # =====================================================
+    # EXECUTE ACTION
+    # =====================================================
+
     @staticmethod
     def execute_action(
         db: Session,
         action_id: int,
     ):
         action = SOARService.get_action(
-            db,
-            action_id,
+            db=db,
+            action_id=action_id,
         )
 
         if not action:
             return None
+
+        # -------------------------------------------------
+        # Approval requirement
+        # -------------------------------------------------
 
         if (
             action.requires_approval
@@ -146,9 +308,10 @@ class SOARService:
         ):
             return "approval_required"
 
-        # --------------------------------------------------
+        # -------------------------------------------------
         # Safety check for IP blocking
-        # --------------------------------------------------
+        # -------------------------------------------------
+
         if action.action_type == "block_ip":
 
             if not SOARService.is_safe_ip_target(
@@ -165,14 +328,51 @@ class SOARService:
                     "target": action.target,
                 }
 
-                db.commit()
-                db.refresh(action)
+                try:
+                    db.commit()
+                    db.refresh(action)
+
+                except Exception:
+                    db.rollback()
+                    raise
 
                 return action
 
-        # --------------------------------------------------
+        # -------------------------------------------------
+        # Safety check for endpoint isolation
+        # -------------------------------------------------
+
+        if action.action_type == "isolate_endpoint":
+
+            if not SOARService.is_safe_endpoint_target(
+                action.target
+            ):
+                action.status = "blocked_by_safety"
+
+                action.result = {
+                    "success": False,
+                    "message": (
+                        "SOAR safety policy prevented "
+                        "isolating an unknown or invalid "
+                        "endpoint."
+                    ),
+                    "target": action.target,
+                }
+
+                try:
+                    db.commit()
+                    db.refresh(action)
+
+                except Exception:
+                    db.rollback()
+                    raise
+
+                return action
+
+        # -------------------------------------------------
         # Prototype SOAR execution
-        # --------------------------------------------------
+        # -------------------------------------------------
+
         action.status = "executed"
         action.executed_at = datetime.utcnow()
 
@@ -186,7 +386,12 @@ class SOARService:
             "target": action.target,
         }
 
-        db.commit()
-        db.refresh(action)
+        try:
+            db.commit()
+            db.refresh(action)
+
+        except Exception:
+            db.rollback()
+            raise
 
         return action
