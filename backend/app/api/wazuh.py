@@ -18,6 +18,10 @@ router = APIRouter(
 )
 
 
+# =========================================================
+# FIND RECENT DUPLICATE
+# =========================================================
+
 def find_recent_duplicate(
     db: Session,
     normalized: dict[str, Any],
@@ -44,18 +48,21 @@ def find_recent_duplicate(
     )
 
     hostname = normalized.get("hostname")
+
     if hostname:
         query = query.filter(
             Incident.hostname == hostname
         )
 
     source_ip = normalized.get("source_ip")
+
     if source_ip:
         query = query.filter(
             Incident.source_ip == source_ip
         )
 
     username = normalized.get("username")
+
     if username:
         query = query.filter(
             Incident.username == username
@@ -68,6 +75,10 @@ def find_recent_duplicate(
         .first()
     )
 
+
+# =========================================================
+# RECEIVE WAZUH ALERT
+# =========================================================
 
 @router.post(
     "/alerts",
@@ -83,16 +94,17 @@ def receive_wazuh_alert(
     Steps:
     1. Normalize the Wazuh alert.
     2. Check for a recent duplicate.
-    3. Create and correlate the SOC incident.
-    4. Start the multi-agent SOC workflow.
-    5. Keep the incident even if the AI workflow fails.
+    3. Create the SOC incident.
+    4. Correlate it with incidents from other sources.
+    5. Run the SOC workflow only for the primary incident.
+    6. Keep the incident even if the AI workflow fails.
     """
 
     service = WazuhService()
 
-    # ==================================================
-    # 1. Normalize Wazuh alert
-    # ==================================================
+    # =====================================================
+    # 1. NORMALIZE WAZUH ALERT
+    # =====================================================
 
     try:
         normalized = service.normalize_alert(
@@ -122,9 +134,9 @@ def receive_wazuh_alert(
             ),
         )
 
-    # ==================================================
-    # 2. Deduplication
-    # ==================================================
+    # =====================================================
+    # 2. DEDUPLICATION
+    # =====================================================
 
     try:
         duplicate = find_recent_duplicate(
@@ -158,6 +170,10 @@ def receive_wazuh_alert(
             ),
         )
 
+    # -----------------------------------------------------
+    # Duplicate found
+    # -----------------------------------------------------
+
     if duplicate:
         return {
             "status": "duplicate",
@@ -179,6 +195,18 @@ def receive_wazuh_alert(
                 "agent_name": normalized.get(
                     "wazuh_agent_name"
                 ),
+                "agent_ip": normalized.get(
+                    "wazuh_agent_ip"
+                ),
+                "mitre_ids": normalized.get(
+                    "mitre_ids"
+                ),
+                "mitre_techniques": normalized.get(
+                    "mitre_techniques"
+                ),
+                "mitre_tactics": normalized.get(
+                    "mitre_tactics"
+                ),
             },
             "incident": {
                 "id": duplicate.id,
@@ -198,6 +226,9 @@ def receive_wazuh_alert(
                 "workflow_status": (
                     duplicate.workflow_status
                 ),
+                "workflow_error": (
+                    duplicate.workflow_error
+                ),
             },
             "workflow": {
                 "status": "not_started",
@@ -205,9 +236,9 @@ def receive_wazuh_alert(
             },
         }
 
-    # ==================================================
-    # 3. Create incident + correlation
-    # ==================================================
+    # =====================================================
+    # 3. CREATE INCIDENT + CORRELATION
+    # =====================================================
 
     try:
         incident = service.create_incident_from_alert(
@@ -246,9 +277,145 @@ def receive_wazuh_alert(
             ),
         )
 
-    # ==================================================
-    # 4. Start SOC multi-agent workflow
-    # ==================================================
+    # =====================================================
+    # 4. CHECK CORRELATION WORKFLOW CONTROL
+    # =====================================================
+
+    try:
+        should_run = (
+            CorrelationService.should_run_workflow(
+                db=db,
+                incident=incident,
+            )
+        )
+
+    except Exception as exc:
+        print(
+            "\n========== WAZUH CORRELATION ERROR =========="
+        )
+        print(
+            f"Error type: {type(exc).__name__}"
+        )
+        print(
+            f"Error message: {str(exc)}"
+        )
+        traceback.print_exc()
+        print(
+            "============================================\n"
+        )
+
+        raise HTTPException(
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail=(
+                "Unable to determine correlation "
+                f"workflow state: {str(exc)}"
+            ),
+        )
+
+    # -----------------------------------------------------
+    # Secondary correlated incident
+    # -----------------------------------------------------
+
+    if not should_run:
+        try:
+            CorrelationService.mark_as_correlated(
+                db=db,
+                incident=incident,
+            )
+
+        except Exception as exc:
+            print(
+                "\n========== WAZUH CORRELATION STATUS ERROR =========="
+            )
+            print(
+                f"Error type: {type(exc).__name__}"
+            )
+            print(
+                f"Error message: {str(exc)}"
+            )
+            traceback.print_exc()
+            print(
+                "===================================================\n"
+            )
+
+            raise HTTPException(
+                status_code=(
+                    status.HTTP_500_INTERNAL_SERVER_ERROR
+                ),
+                detail=(
+                    "Unable to mark incident as "
+                    f"correlated: {str(exc)}"
+                ),
+            )
+
+        return {
+            "status": "correlated",
+            "message": (
+                "Incident correlated with an existing "
+                "multi-source incident. SOC workflow was "
+                "not executed again."
+            ),
+            "wazuh": {
+                "rule_id": normalized.get(
+                    "wazuh_rule_id"
+                ),
+                "rule_level": normalized.get(
+                    "wazuh_rule_level"
+                ),
+                "agent_id": normalized.get(
+                    "wazuh_agent_id"
+                ),
+                "agent_name": normalized.get(
+                    "wazuh_agent_name"
+                ),
+                "agent_ip": normalized.get(
+                    "wazuh_agent_ip"
+                ),
+                "mitre_ids": normalized.get(
+                    "mitre_ids"
+                ),
+                "mitre_techniques": normalized.get(
+                    "mitre_techniques"
+                ),
+                "mitre_tactics": normalized.get(
+                    "mitre_tactics"
+                ),
+            },
+            "incident": {
+                "id": incident.id,
+                "title": incident.title,
+                "severity": incident.severity,
+                "status": incident.status,
+                "source": incident.source,
+                "hostname": incident.hostname,
+                "source_ip": incident.source_ip,
+                "destination_ip": (
+                    incident.destination_ip
+                ),
+                "username": incident.username,
+                "correlation_id": (
+                    incident.correlation_id
+                ),
+                "workflow_status": (
+                    incident.workflow_status
+                ),
+                "workflow_error": (
+                    incident.workflow_error
+                ),
+            },
+            "workflow": {
+                "status": "not_started",
+                "reason": (
+                    "secondary_correlated_incident"
+                ),
+            },
+        }
+
+    # =====================================================
+    # 5. START SOC MULTI-AGENT WORKFLOW
+    # =====================================================
 
     try:
         workflow_result = run_soc_workflow(
@@ -279,8 +446,7 @@ def receive_wazuh_alert(
         # A failure of Groq / LLM / LangGraph must NOT
         # make Wazuh believe that alert ingestion failed.
         #
-        # The API therefore keeps HTTP 201 and reports
-        # that only the SOC workflow failed.
+        # The API therefore keeps HTTP 201.
 
         return {
             "status": "processed_with_workflow_error",
@@ -344,15 +510,16 @@ def receive_wazuh_alert(
             },
         }
 
-    # ==================================================
-    # 5. Successful API response
-    # ==================================================
+    # =====================================================
+    # 6. SUCCESSFUL RESPONSE
+    # =====================================================
 
     return {
         "status": "processed",
         "message": (
-            "Wazuh alert converted to incident "
-            "and SOC workflow started successfully."
+            "Wazuh alert converted to incident, "
+            "correlated, and SOC workflow started "
+            "successfully."
         ),
         "wazuh": {
             "rule_id": normalized.get(

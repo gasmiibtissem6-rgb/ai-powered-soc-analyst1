@@ -8,14 +8,19 @@ from sqlalchemy.orm import Session
 from app.api.agents import run_soc_workflow
 from app.database.session import get_db
 from app.models.incident import Incident
-from app.services.suricata_service import SuricataService
 from app.services.correlation_service import CorrelationService
+from app.services.suricata_service import SuricataService
+
 
 router = APIRouter(
     prefix="/suricata",
     tags=["Suricata"],
 )
 
+
+# =========================================================
+# FIND RECENT DUPLICATE
+# =========================================================
 
 def find_recent_duplicate(
     db: Session,
@@ -43,6 +48,7 @@ def find_recent_duplicate(
     )
 
     source_ip = normalized.get("source_ip")
+
     if source_ip:
         query = query.filter(
             Incident.source_ip == source_ip
@@ -51,6 +57,7 @@ def find_recent_duplicate(
     destination_ip = normalized.get(
         "destination_ip"
     )
+
     if destination_ip:
         query = query.filter(
             Incident.destination_ip == destination_ip
@@ -63,6 +70,10 @@ def find_recent_duplicate(
         .first()
     )
 
+
+# =========================================================
+# RECEIVE SURICATA ALERT
+# =========================================================
 
 @router.post(
     "/alerts",
@@ -78,16 +89,17 @@ def receive_suricata_alert(
     Steps:
     1. Normalize the Suricata alert.
     2. Check for a recent duplicate.
-    3. Create a SOC incident.
-    4. Start the multi-agent SOC workflow.
-    5. Keep the incident even if the AI workflow fails.
+    3. Create the SOC incident.
+    4. Correlate it with incidents from other sources.
+    5. Run the SOC workflow only for the primary incident.
+    6. Keep the incident even if the AI workflow fails.
     """
 
     service = SuricataService()
 
-    # ==================================================
-    # 1. Normalize Suricata alert
-    # ==================================================
+    # =====================================================
+    # 1. NORMALIZE SURICATA ALERT
+    # =====================================================
 
     try:
         normalized = service.normalize_alert(
@@ -117,9 +129,9 @@ def receive_suricata_alert(
             ),
         )
 
-    # ==================================================
-    # 2. Deduplication
-    # ==================================================
+    # =====================================================
+    # 2. DEDUPLICATION
+    # =====================================================
 
     try:
         duplicate = find_recent_duplicate(
@@ -153,6 +165,10 @@ def receive_suricata_alert(
             ),
         )
 
+    # -----------------------------------------------------
+    # Duplicate found
+    # -----------------------------------------------------
+
     if duplicate:
         return {
             "status": "duplicate",
@@ -177,8 +193,14 @@ def receive_suricata_alert(
                     duplicate.destination_ip
                 ),
                 "username": duplicate.username,
+                "correlation_id": (
+                    duplicate.correlation_id
+                ),
                 "workflow_status": (
                     duplicate.workflow_status
+                ),
+                "workflow_error": (
+                    duplicate.workflow_error
                 ),
             },
             "workflow": {
@@ -187,9 +209,9 @@ def receive_suricata_alert(
             },
         }
 
-        # ==================================================
-    # 3. Create incident + correlation
-    # ==================================================
+    # =====================================================
+    # 3. CREATE INCIDENT + CORRELATION
+    # =====================================================
 
     try:
         incident = service.create_incident_from_alert(
@@ -227,11 +249,124 @@ def receive_suricata_alert(
                 f"Suricata alert: {str(exc)}"
             ),
         )
-      
 
-    # ==================================================
-    # 4. Start SOC multi-agent workflow
-    # ==================================================
+    # =====================================================
+    # 4. CHECK CORRELATION WORKFLOW CONTROL
+    # =====================================================
+
+    try:
+        should_run = (
+            CorrelationService.should_run_workflow(
+                db=db,
+                incident=incident,
+            )
+        )
+
+    except Exception as exc:
+        print(
+            "\n========== SURICATA CORRELATION ERROR =========="
+        )
+        print(
+            f"Error type: {type(exc).__name__}"
+        )
+        print(
+            f"Error message: {str(exc)}"
+        )
+        traceback.print_exc()
+        print(
+            "===============================================\n"
+        )
+
+        raise HTTPException(
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail=(
+                "Unable to determine correlation "
+                f"workflow state: {str(exc)}"
+            ),
+        )
+
+    # -----------------------------------------------------
+    # Secondary correlated incident
+    # -----------------------------------------------------
+
+    if not should_run:
+        try:
+            CorrelationService.mark_as_correlated(
+                db=db,
+                incident=incident,
+            )
+
+        except Exception as exc:
+            print(
+                "\n========== SURICATA CORRELATION STATUS ERROR =========="
+            )
+            print(
+                f"Error type: {type(exc).__name__}"
+            )
+            print(
+                f"Error message: {str(exc)}"
+            )
+            traceback.print_exc()
+            print(
+                "======================================================\n"
+            )
+
+            raise HTTPException(
+                status_code=(
+                    status.HTTP_500_INTERNAL_SERVER_ERROR
+                ),
+                detail=(
+                    "Unable to mark incident as "
+                    f"correlated: {str(exc)}"
+                ),
+            )
+
+        return {
+            "status": "correlated",
+            "message": (
+                "Incident correlated with an existing "
+                "multi-source incident. SOC workflow was "
+                "not executed again."
+            ),
+            "suricata": normalized.get(
+                "suricata",
+                {},
+            ),
+            "incident": {
+                "id": incident.id,
+                "title": incident.title,
+                "severity": incident.severity,
+                "status": incident.status,
+                "source": incident.source,
+                "hostname": incident.hostname,
+                "source_ip": incident.source_ip,
+                "destination_ip": (
+                    incident.destination_ip
+                ),
+                "username": incident.username,
+                "correlation_id": (
+                    incident.correlation_id
+                ),
+                "workflow_status": (
+                    incident.workflow_status
+                ),
+                "workflow_error": (
+                    incident.workflow_error
+                ),
+            },
+            "workflow": {
+                "status": "not_started",
+                "reason": (
+                    "secondary_correlated_incident"
+                ),
+            },
+        }
+
+    # =====================================================
+    # 5. START SOC MULTI-AGENT WORKFLOW
+    # =====================================================
 
     try:
         workflow_result = run_soc_workflow(
@@ -254,6 +389,15 @@ def receive_suricata_alert(
         print(
             "============================================\n"
         )
+
+        # IMPORTANT:
+        # The Suricata alert has already been converted
+        # into an incident.
+        #
+        # A failure of Groq / LLM / LangGraph must NOT
+        # make Suricata ingestion fail.
+        #
+        # The API therefore keeps HTTP 201.
 
         return {
             "status": "processed_with_workflow_error",
@@ -278,6 +422,9 @@ def receive_suricata_alert(
                     incident.destination_ip
                 ),
                 "username": incident.username,
+                "correlation_id": (
+                    incident.correlation_id
+                ),
                 "workflow_status": (
                     incident.workflow_status
                 ),
@@ -292,15 +439,16 @@ def receive_suricata_alert(
             },
         }
 
-    # ==================================================
-    # 5. Successful response
-    # ==================================================
+    # =====================================================
+    # 6. SUCCESSFUL RESPONSE
+    # =====================================================
 
     return {
         "status": "processed",
         "message": (
-            "Suricata alert converted to incident "
-            "and SOC workflow started successfully."
+            "Suricata alert converted to incident, "
+            "correlated, and SOC workflow started "
+            "successfully."
         ),
         "suricata": normalized.get(
             "suricata",
@@ -318,6 +466,9 @@ def receive_suricata_alert(
                 incident.destination_ip
             ),
             "username": incident.username,
+            "correlation_id": (
+                incident.correlation_id
+            ),
             "workflow_status": (
                 incident.workflow_status
             ),
