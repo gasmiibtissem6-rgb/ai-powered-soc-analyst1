@@ -81,7 +81,7 @@ class RAGService:
         self.chunk_overlap = 80
 
         # Increment this whenever indexing logic changes.
-        self.index_version = "8"
+        self.index_version = "9"
 
         self._initialize()
 
@@ -603,6 +603,103 @@ class RAGService:
                                 ),
                                 "wazuh_topic": (
                                     wazuh_topic
+                                ),
+                                "official_source": (
+                                    official_source
+                                ),
+                            },
+                        )
+                    )
+
+                continue
+
+                        # =================================================
+            # SURICATA DOCUMENTATION
+            #
+            # One LlamaIndex Document per Suricata topic.
+            # =================================================
+
+            if (
+                relative_path_string
+                == "suricata/suricata_soc_reference.md"
+            ):
+                pattern = re.compile(
+                    r"(?m)^## "
+                    r"(SURICATA-[a-z0-9\-]+)"
+                    r" - "
+                    r"(.+?)"
+                    r"\n"
+                )
+
+                matches = list(
+                    pattern.finditer(content)
+                )
+
+                for index, match in enumerate(matches):
+                    suricata_topic_id = (
+                        match.group(1).strip()
+                    )
+
+                    suricata_topic = (
+                        match.group(2).strip()
+                    )
+
+                    section_start = match.start()
+
+                    if index + 1 < len(matches):
+                        section_end = matches[
+                            index + 1
+                        ].start()
+                    else:
+                        section_end = len(content)
+
+                    suricata_content = content[
+                        section_start:section_end
+                    ].strip()
+
+                    if not suricata_content:
+                        continue
+
+                    source_match = re.search(
+                        r"\*\*Official Source:\*\*"
+                        r"\s*(.+)",
+                        suricata_content,
+                    )
+
+                    official_source = (
+                        source_match.group(1).strip()
+                        if source_match
+                        else ""
+                    )
+
+                    documents.append(
+                        Document(
+                            text=suricata_content,
+                            metadata={
+                                "source": str(
+                                    relative_path
+                                ),
+                                "display_source": (
+                                    suricata_topic
+                                    if suricata_topic
+                                    .lower()
+                                    .startswith("suricata")
+                                    else (
+                                        "Suricata "
+                                        + suricata_topic
+                                    )
+                                ),
+                                "file_name": (
+                                    file_path.name
+                                ),
+                                "document_type": (
+                                    "suricata_documentation"
+                                ),
+                                "suricata_topic_id": (
+                                    suricata_topic_id
+                                ),
+                                "suricata_topic": (
+                                    suricata_topic
                                 ),
                                 "official_source": (
                                     official_source
