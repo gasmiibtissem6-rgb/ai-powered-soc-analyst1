@@ -19,7 +19,8 @@ from app.models.ai_analysis import AIAnalysis
 from app.models.incident import Incident
 from app.models.report import SOCReport
 from app.models.soar_action import SOARAction
-
+from app.core.security import require_admin, require_analyst
+from app.models.user import User
 
 # =========================================================
 # ROUTER
@@ -1223,6 +1224,7 @@ def analyze_incident_with_agents(
     incident_id: int,
     request: Optional[AnalyzeIncidentRequest] = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
 
     incident = (
@@ -1255,6 +1257,7 @@ def resume_soc_workflow(
     thread_id: str,
     decision: HumanDecision,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
 
     config = {

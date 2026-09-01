@@ -5,7 +5,8 @@ from fastapi import (
 )
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-
+from app.core.security import require_analyst
+from app.models.user import User
 from app.database.session import get_db
 from app.models.incident import Incident
 from app.services.threat_intelligence_service import (
@@ -51,6 +52,7 @@ class URLAnalysisRequest(BaseModel):
 @router.get("/ip/{ip_address}")
 def check_ip(
     ip_address: str,
+    current_user: User = Depends(require_analyst),
 ):
     try:
         return service.check_ip(
@@ -71,6 +73,7 @@ def check_ip(
 @router.post("/analyze")
 def analyze_text(
     request: TextAnalysisRequest,
+    current_user: User = Depends(require_analyst),
 ):
     try:
         return service.analyze_text(
@@ -91,6 +94,7 @@ def analyze_text(
 @router.get("/virustotal/ip/{ip_address}")
 def virustotal_check_ip(
     ip_address: str,
+    current_user: User = Depends(require_analyst),
 ):
     try:
         return enrichment_service.virustotal.check_ip(
@@ -111,6 +115,7 @@ def virustotal_check_ip(
 @router.get("/virustotal/domain/{domain}")
 def virustotal_check_domain(
     domain: str,
+    current_user: User = Depends(require_analyst),
 ):
     try:
         return enrichment_service.virustotal.check_domain(
@@ -131,6 +136,7 @@ def virustotal_check_domain(
 @router.post("/virustotal/url")
 def virustotal_check_url(
     request: URLAnalysisRequest,
+    current_user: User = Depends(require_analyst),
 ):
     try:
         return enrichment_service.virustotal.check_url(
@@ -151,6 +157,7 @@ def virustotal_check_url(
 @router.get("/virustotal/hash/{file_hash}")
 def virustotal_check_hash(
     file_hash: str,
+    current_user: User = Depends(require_analyst),
 ):
     try:
         return enrichment_service.virustotal.check_hash(
@@ -171,6 +178,7 @@ def virustotal_check_hash(
 @router.get("/otx/ip/{ip_address}")
 def otx_check_ip(
     ip_address: str,
+    current_user: User = Depends(require_analyst),
 ):
     try:
         return enrichment_service.otx.check_ip(
@@ -191,6 +199,7 @@ def otx_check_ip(
 @router.get("/otx/domain/{domain}")
 def otx_check_domain(
     domain: str,
+    current_user: User = Depends(require_analyst),
 ):
     try:
         return enrichment_service.otx.check_domain(
@@ -211,6 +220,7 @@ def otx_check_domain(
 @router.post("/otx/url")
 def otx_check_url(
     request: URLAnalysisRequest,
+    current_user: User = Depends(require_analyst),
 ):
     try:
         return enrichment_service.otx.check_url(
@@ -231,6 +241,7 @@ def otx_check_url(
 @router.get("/otx/hash/{file_hash}")
 def otx_check_hash(
     file_hash: str,
+    current_user: User = Depends(require_analyst),
 ):
     try:
         return enrichment_service.otx.check_hash(
@@ -252,6 +263,7 @@ def otx_check_hash(
 def analyze_incident_threat_intelligence(
     incident_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
     """
     Extract and enrich Indicators of Compromise from an incident.

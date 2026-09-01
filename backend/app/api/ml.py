@@ -1,9 +1,16 @@
 from typing import Dict
-from app.services.ml_service import MLService
-from fastapi import APIRouter, HTTPException
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+)
 from pydantic import BaseModel
 
+from app.core.security import require_analyst
 from app.ml.predictor import predict_traffic
+from app.models.user import User
+from app.services.ml_service import MLService
 
 
 router = APIRouter(
@@ -17,33 +24,56 @@ class TrafficPredictionRequest(BaseModel):
 
 
 @router.post("/predict")
-def predict_network_traffic(request: TrafficPredictionRequest):
+def predict_network_traffic(
+    request: TrafficPredictionRequest,
+    current_user: User = Depends(require_analyst),
+):
     """
     Predict network traffic as:
     BENIGN, DDoS, PortScan, FTP-Patator or SSH-Patator.
     """
 
     try:
-        result = predict_traffic(request.features)
+        result = predict_traffic(
+            request.features
+        )
 
         return {
             "status": "success",
-            "prediction": result["prediction"],
-            "benign_probability": result["benign_probability"],
-            "ddos_probability": result["ddos_probability"],
-            "portscan_probability": result["portscan_probability"],
-            "ftp_patator_probability": result["ftp_patator_probability"],
-            "ssh_patator_probability": result["ssh_patator_probability"],
+            "prediction": result[
+                "prediction"
+            ],
+            "benign_probability": result[
+                "benign_probability"
+            ],
+            "ddos_probability": result[
+                "ddos_probability"
+            ],
+            "portscan_probability": result[
+                "portscan_probability"
+            ],
+            "ftp_patator_probability": result[
+                "ftp_patator_probability"
+            ],
+            "ssh_patator_probability": result[
+                "ssh_patator_probability"
+            ],
         }
 
-    except Exception as e:
+    except Exception as exc:
         raise HTTPException(
             status_code=400,
-            detail=f"Prediction failed: {str(e)}",
+            detail=(
+                "Prediction failed: "
+                f"{str(exc)}"
+            ),
         )
+
+
 @router.post("/suricata-anomaly")
 def predict_suricata_flow_anomaly(
     event: Dict,
+    current_user: User = Depends(require_analyst),
 ):
     """
     Detect anomalous Suricata flow events
@@ -60,13 +90,21 @@ def predict_suricata_flow_anomaly(
         )
 
         return {
-            "status": result["status"],
-            "prediction": result["prediction"],
-            "is_anomaly": result["is_anomaly"],
+            "status": result[
+                "status"
+            ],
+            "prediction": result[
+                "prediction"
+            ],
+            "is_anomaly": result[
+                "is_anomaly"
+            ],
             "anomaly_score": result[
                 "anomaly_score"
             ],
-            "features": result["features"],
+            "features": result[
+                "features"
+            ],
         }
 
     except Exception as exc:

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.agents import run_soc_workflow
+from app.core.ingestion_security import verify_ingestion_api_key
 from app.database.session import get_db
 from app.models.incident import Incident
 from app.services.correlation_service import CorrelationService
@@ -87,6 +88,7 @@ def find_recent_duplicate(
 def receive_wazuh_alert(
     alert: dict[str, Any],
     db: Session = Depends(get_db),
+    _: None = Depends(verify_ingestion_api_key),
 ):
     """
     Receive a Wazuh alert.

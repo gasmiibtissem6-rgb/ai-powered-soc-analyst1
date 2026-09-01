@@ -1,4 +1,5 @@
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -6,6 +7,11 @@ import urllib.request
 
 EVE_PATH = "/var/log/suricata/eve.json"
 API_URL = "http://127.0.0.1:8000/suricata/alerts"
+
+SOC_INGESTION_API_KEY = os.getenv(
+    "SOC_INGESTION_API_KEY",
+    "",
+)
 
 
 def send_alert(alert: dict) -> None:
@@ -17,8 +23,9 @@ def send_alert(alert: dict) -> None:
         API_URL,
         data=payload,
         headers={
-            "Content-Type": "application/json",
-        },
+    "Content-Type": "application/json",
+    "X-SOC-Ingestion-Key": SOC_INGESTION_API_KEY,
+},
         method="POST",
     )
 

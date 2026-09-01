@@ -8,7 +8,9 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 
+from app.core.security import require_analyst
 from app.database.session import get_db
+from app.models.user import User
 from app.schemas.report import SOCReportResponse
 from app.services.report_service import ReportService
 
@@ -21,6 +23,7 @@ router = APIRouter(
 
 # =========================================================
 # GET ALL REPORTS
+# Analyst + Admin
 # =========================================================
 
 @router.get(
@@ -29,15 +32,14 @@ router = APIRouter(
 )
 def get_reports(
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
-
-    return ReportService.get_reports(
-        db
-    )
+    return ReportService.get_reports(db)
 
 
 # =========================================================
 # GET REPORTS BY INCIDENT
+# Analyst + Admin
 # =========================================================
 
 @router.get(
@@ -47,8 +49,8 @@ def get_reports(
 def get_reports_by_incident(
     incident_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
-
     return ReportService.get_reports_by_incident(
         db,
         incident_id,
@@ -57,6 +59,7 @@ def get_reports_by_incident(
 
 # =========================================================
 # GET ONE REPORT
+# Analyst + Admin
 # =========================================================
 
 @router.get(
@@ -66,8 +69,8 @@ def get_reports_by_incident(
 def get_report(
     report_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
-
     report = ReportService.get_report(
         db,
         report_id,
