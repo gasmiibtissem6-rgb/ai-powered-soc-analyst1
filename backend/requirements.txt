@@ -26,6 +26,7 @@ langchain-core==0.3.86
 langchain-text-splitters==0.3.11
 langgraph==0.6.11
 langgraph-checkpoint==2.1.2
+langgraph-checkpoint-postgres==2.0.25
 langgraph-prebuilt==0.6.5
 langgraph-sdk==0.2.9
 langsmith==0.4.37
