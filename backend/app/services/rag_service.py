@@ -81,7 +81,7 @@ class RAGService:
         self.chunk_overlap = 80
 
         # Increment this whenever indexing logic changes.
-        self.index_version = "6"
+        self.index_version = "8"
 
         self._initialize()
 
@@ -503,6 +503,115 @@ class RAGService:
 
                 continue
 
+                        # =================================================
+            # WAZUH DOCUMENTATION
+            #
+            # One LlamaIndex Document per Wazuh topic.
+            # =================================================
+
+            if (
+                relative_path_string
+                == "wazuh/wazuh_soc_reference.md"
+            ):
+                pattern = re.compile(
+                    r"(?m)^## "
+                    r"(WAZUH-[a-z0-9\-]+)"
+                    r" - "
+                    r"(.+?)"
+                    r"\n"
+                )
+
+                matches = list(
+                    pattern.finditer(
+                        content
+                    )
+                )
+
+                for index, match in enumerate(
+                    matches
+                ):
+                    wazuh_topic_id = (
+                        match.group(1)
+                        .strip()
+                    )
+
+                    wazuh_topic = (
+                        match.group(2)
+                        .strip()
+                    )
+
+                    section_start = (
+                        match.start()
+                    )
+
+                    if (
+                        index + 1
+                        < len(matches)
+                    ):
+                        section_end = (
+                            matches[
+                                index + 1
+                            ].start()
+                        )
+                    else:
+                        section_end = len(
+                            content
+                        )
+
+                    wazuh_content = (
+                        content[
+                            section_start:
+                            section_end
+                        ].strip()
+                    )
+
+                    if not wazuh_content:
+                        continue
+
+                    source_match = re.search(
+                        r"\*\*Official Source:\*\*"
+                        r"\s*(.+)",
+                        wazuh_content,
+                    )
+
+                    official_source = (
+                        source_match.group(1).strip()
+                        if source_match
+                        else ""
+                    )
+
+                    documents.append(
+                        Document(
+                            text=wazuh_content,
+                            metadata={
+                                "source": str(
+                                    relative_path
+                                ),
+                                "display_source": (
+    wazuh_topic
+    if wazuh_topic.lower().startswith("wazuh")
+    else "Wazuh " + wazuh_topic
+),
+                                "file_name": (
+                                    file_path.name
+                                ),
+                                "document_type": (
+                                    "wazuh_documentation"
+                                ),
+                                "wazuh_topic_id": (
+                                    wazuh_topic_id
+                                ),
+                                "wazuh_topic": (
+                                    wazuh_topic
+                                ),
+                                "official_source": (
+                                    official_source
+                                ),
+                            },
+                        )
+                    )
+
+                continue
             # =================================================
             # NIST CYBERSECURITY FRAMEWORK 2.0
             # =================================================
