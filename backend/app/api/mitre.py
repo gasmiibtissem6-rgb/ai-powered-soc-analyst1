@@ -10,14 +10,14 @@ router = APIRouter(
     tags=["MITRE ATT&CK"],
 )
 
-service = MitreService()
-
 
 @router.get("/technique/{technique_id}")
 def validate_technique(
     technique_id: str,
     current_user: User = Depends(require_analyst),
 ):
+    service = MitreService()
+
     return service.validate_technique(
         technique_id
     )
