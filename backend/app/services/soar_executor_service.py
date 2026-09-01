@@ -35,6 +35,7 @@ class SOARExecutorService:
         - create_ticket
         - block_ip
         - isolate_endpoint
+        - disable_user
         """
 
         normalized_action = (
@@ -85,6 +86,11 @@ class SOARExecutorService:
 
         if normalized_action == "isolate_endpoint":
             return SOARExecutorService.isolate_endpoint(
+                normalized_target
+            )
+
+        if normalized_action == "disable_user":
+            return SOARExecutorService.disable_user(
                 normalized_target
             )
 
@@ -318,6 +324,113 @@ class SOARExecutorService:
                 "isolation adapter has been configured yet."
             ),
         }
+
+    # =====================================================
+    # DISABLE USER
+    # =====================================================
+
+    @staticmethod
+    def disable_user(
+        target: str,
+    ) -> Dict[str, Any]:
+        """
+        Prepare disabling a user account.
+
+        The target is expected to be a user identifier
+        such as an email address or username.
+
+        Real account disabling requires an external
+        identity provider or directory adapter.
+        """
+
+        if not SOARExecutorService.is_safe_user(
+            target
+        ):
+            return {
+                "success": False,
+                "executed": False,
+                "simulated": False,
+                "mode": settings.SOAR_EXECUTION_MODE,
+                "action_type": "disable_user",
+                "target": target,
+                "message": (
+                    "SOAR safety policy rejected "
+                    "the user target."
+                ),
+            }
+
+        if SOARExecutorService.is_dry_run():
+            return {
+                "success": True,
+                "executed": False,
+                "simulated": True,
+                "mode": "dry_run",
+                "action_type": "disable_user",
+                "target": target,
+                "message": (
+                    f"DRY RUN: disabling user account "
+                    f"{target} simulated successfully."
+                ),
+            }
+
+        if not settings.SOAR_ENABLE_DISABLE_USER:
+            return {
+                "success": False,
+                "executed": False,
+                "simulated": False,
+                "mode": settings.SOAR_EXECUTION_MODE,
+                "action_type": "disable_user",
+                "target": target,
+                "message": (
+                    "Real user disabling is disabled by "
+                    "SOAR_ENABLE_DISABLE_USER."
+                ),
+            }
+
+        return {
+            "success": False,
+            "executed": False,
+            "simulated": False,
+            "mode": settings.SOAR_EXECUTION_MODE,
+            "action_type": "disable_user",
+            "target": target,
+            "message": (
+                "User disabling is enabled in configuration "
+                "but no production identity provider or "
+                "directory adapter has been configured yet."
+            ),
+        }
+
+    # =====================================================
+    # USER VALIDATION
+    # =====================================================
+
+    @staticmethod
+    def is_safe_user(
+        target: str,
+    ) -> bool:
+        """
+        Reject unusable user account identifiers.
+        """
+
+        if not target:
+            return False
+
+        normalized = target.strip().lower()
+
+        unsafe_values = {
+            "",
+            "unknown",
+            "unknown-user",
+            "unknown_user",
+            "none",
+            "null",
+            "n/a",
+            "na",
+            "undefined",
+        }
+
+        return normalized not in unsafe_values
 
     # =====================================================
     # IP VALIDATION

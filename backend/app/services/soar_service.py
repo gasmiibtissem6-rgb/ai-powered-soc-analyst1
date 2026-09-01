@@ -270,6 +270,46 @@ class SOARService:
 
                 return action
 
+        # -------------------------------------------------
+        # Safety: invalid user cannot be approved
+        # -------------------------------------------------
+
+        if action.action_type == "disable_user":
+
+            if not SOARService.is_safe_user_target(
+                action.target
+            ):
+                action.approved = False
+                action.status = "blocked_by_safety"
+
+                action.result = {
+                    "success": False,
+                    "message": (
+                        "SOAR safety policy prevented "
+                        "approval of an invalid user target."
+                    ),
+                    "target": action.target,
+                }
+
+                try:
+                    db.commit()
+                    db.refresh(action)
+
+                except Exception:
+                    db.rollback()
+                    raise
+
+                SOARService.log_action_event(
+                    db=db,
+                    action=action,
+                    event_type="blocked_by_safety",
+                    previous_status=previous_status,
+                    new_status="blocked_by_safety",
+                    details=action.result,
+                )
+
+                return action
+
         action.approved = True
         action.status = "approved"
 
@@ -415,6 +455,38 @@ class SOARService:
         return True
 
     # =====================================================
+    # USER SAFETY
+    # =====================================================
+
+    @staticmethod
+    def is_safe_user_target(
+        target: str,
+    ) -> bool:
+        """
+        Return False when a user account target is
+        empty, unknown, or otherwise unusable.
+        """
+
+        if not target:
+            return False
+
+        normalized = target.strip().lower()
+
+        unsafe_values = {
+            "",
+            "unknown",
+            "unknown-user",
+            "unknown_user",
+            "none",
+            "null",
+            "n/a",
+            "na",
+            "undefined",
+        }
+
+        return normalized not in unsafe_values
+
+    # =====================================================
     # EXECUTE ACTION
     # =====================================================
 
@@ -521,6 +593,45 @@ class SOARService:
                 )
 
                 # -------------------------------------------------
+        # Safety check for user disabling
+        # -------------------------------------------------
+
+        if action.action_type == "disable_user":
+
+            if not SOARService.is_safe_user_target(
+                action.target
+            ):
+                action.status = "blocked_by_safety"
+
+                action.result = {
+                    "success": False,
+                    "message": (
+                        "SOAR safety policy prevented "
+                        "disabling an invalid user target."
+                    ),
+                    "target": action.target,
+                }
+
+                try:
+                    db.commit()
+                    db.refresh(action)
+
+                except Exception:
+                    db.rollback()
+                    raise
+
+                SOARService.log_action_event(
+                    db=db,
+                    action=action,
+                    event_type="blocked_by_safety",
+                    previous_status=previous_status,
+                    new_status="blocked_by_safety",
+                    details=action.result,
+                )
+
+                return action
+
+        # -------------------------------------------------
         # Execute through SOAR Executor
         # -------------------------------------------------
 

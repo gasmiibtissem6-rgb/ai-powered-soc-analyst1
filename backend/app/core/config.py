@@ -46,6 +46,9 @@ class Settings(BaseSettings):
 
     SOAR_ENABLE_ISOLATE_ENDPOINT: bool = False
 
+    SOAR_ENABLE_DISABLE_USER: bool = False
+
+
     # =====================================================
     # PYDANTIC SETTINGS
     # =====================================================
