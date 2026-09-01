@@ -81,7 +81,7 @@ class RAGService:
         self.chunk_overlap = 80
 
         # Increment this whenever indexing logic changes.
-        self.index_version = "9"
+        self.index_version = "10"
 
         self._initialize()
 
@@ -707,6 +707,71 @@ class RAGService:
                             },
                         )
                     )
+
+                continue
+
+                        # =================================================
+            # INTERNAL SOC RUNBOOKS
+            #
+            # One LlamaIndex Document per generated SOC runbook.
+            # =================================================
+
+            if (
+                relative_path.parts
+                and relative_path.parts[0] == "runbooks"
+                and file_path.name.endswith("_runbook.md")
+            ):
+                runbook_id_match = re.search(
+                    r"\*\*Runbook ID:\*\*\s*(.+)",
+                    content,
+                )
+
+                incident_type_match = re.search(
+                    r"\*\*Incident Type:\*\*\s*(.+)",
+                    content,
+                )
+
+                mitre_match = re.search(
+                    r"\*\*MITRE ATT&CK:\*\*\s*(.+)",
+                    content,
+                )
+
+                runbook_id = (
+                    runbook_id_match.group(1).strip()
+                    if runbook_id_match
+                    else file_path.stem
+                )
+
+                incident_type = (
+                    incident_type_match.group(1).strip()
+                    if incident_type_match
+                    else file_path.stem
+                )
+
+                mitre_mapping = (
+                    mitre_match.group(1).strip()
+                    if mitre_match
+                    else ""
+                )
+
+                documents.append(
+                    Document(
+                        text=content.strip(),
+                        metadata={
+                            "source": str(relative_path),
+                            "display_source": (
+                                "SOC Runbook - "
+                                + incident_type
+                            ),
+                            "file_name": file_path.name,
+                            "document_type": "soc_runbook",
+                            "runbook_id": runbook_id,
+                            "incident_type": incident_type,
+                            "mitre_mapping": mitre_mapping,
+                            "source_type": "internal",
+                        },
+                    )
+                )
 
                 continue
             # =================================================
