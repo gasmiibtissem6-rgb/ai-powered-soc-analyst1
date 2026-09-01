@@ -23,13 +23,18 @@ class RAGService:
 
     Architecture:
         Markdown knowledge base
-            -> LlamaIndex Document
+            -> LlamaIndex Documents
             -> SentenceSplitter chunks
             -> HuggingFace embeddings
             -> Qdrant persistent vector database
             -> semantic retrieval
 
-    The expensive resources are shared between RAGService instances so the
+    Supported knowledge sources:
+        - MITRE ATT&CK
+        - NIST Cybersecurity Framework 2.0
+        - SOC playbooks / internal Markdown documents
+
+    Expensive resources are shared between RAGService instances so the
     embedding model and Qdrant index are not rebuilt for every SOC incident.
     """
 
@@ -73,9 +78,9 @@ class RAGService:
         self.chunk_size = 512
         self.chunk_overlap = 80
 
-        # Increment this value whenever the indexing logic changes.
-        # This forces Qdrant to rebuild the vector index.
-        self.index_version = "2"
+        # Increment this value whenever indexing logic changes.
+        # This automatically invalidates the previous Qdrant index.
+        self.index_version = "4"
 
         self._initialize()
 
@@ -106,13 +111,22 @@ class RAGService:
                 self.knowledge_base_path
             )
 
+            relative_path_string = (
+                relative_path.as_posix()
+            )
+
             # =================================================
             # MITRE ATT&CK
-            # One LlamaIndex Document per ATT&CK technique
+            #
+            # One LlamaIndex Document per ATT&CK technique.
+            #
+            # Examples:
+            #   T1110 - Brute Force
+            #   T1053.005 - Scheduled Task/Job
             # =================================================
 
             if (
-                relative_path.as_posix()
+                relative_path_string
                 == "mitre/mitre_enterprise_attack.md"
             ):
                 pattern = re.compile(
@@ -124,25 +138,32 @@ class RAGService:
                 )
 
                 matches = list(
-                    pattern.finditer(content)
+                    pattern.finditer(
+                        content
+                    )
                 )
 
                 for index, match in enumerate(
                     matches
                 ):
                     technique_id = (
-                        match.group(1).strip()
+                        match.group(1)
+                        .strip()
                     )
 
                     technique_name = (
-                        match.group(2).strip()
+                        match.group(2)
+                        .strip()
                     )
 
                     section_start = (
                         match.start()
                     )
 
-                    if index + 1 < len(matches):
+                    if (
+                        index + 1
+                        < len(matches)
+                    ):
                         section_end = (
                             matches[
                                 index + 1
@@ -165,7 +186,9 @@ class RAGService:
 
                     documents.append(
                         Document(
-                            text=technique_content,
+                            text=(
+                                technique_content
+                            ),
                             metadata={
                                 "source": str(
                                     relative_path
@@ -195,7 +218,351 @@ class RAGService:
                 continue
 
             # =================================================
-            # STANDARD KNOWLEDGE DOCUMENT
+            # NIST CYBERSECURITY FRAMEWORK 2.0
+            #
+            # Core pages:
+            #   One LlamaIndex Document per CSF category.
+            #
+            # Examples:
+            #   DE.CM - Continuous Monitoring
+            #   RS.MA - Incident Management
+            #   RC.RP - Incident Recovery Plan Execution
+            #
+            # General pages:
+            #   One LlamaIndex Document per PDF page.
+            # =================================================
+
+            if (
+                relative_path_string
+                == "nist/nist_csf_2_0.md"
+            ):
+                page_pattern = re.compile(
+                    r"(?m)^## NIST CSF 2\.0 - Page "
+                    r"(\d+)"
+                    r"\n"
+                )
+
+                page_matches = list(
+                    page_pattern.finditer(
+                        content
+                    )
+                )
+
+                function_map = {
+                    "GV": "GOVERN",
+                    "ID": "IDENTIFY",
+                    "PR": "PROTECT",
+                    "DE": "DETECT",
+                    "RS": "RESPOND",
+                    "RC": "RECOVER",
+                }
+
+                for (
+                    page_index,
+                    page_match,
+                ) in enumerate(
+                    page_matches
+                ):
+                    page_number = (
+                        page_match
+                        .group(1)
+                        .strip()
+                    )
+
+                    page_start = (
+                        page_match.start()
+                    )
+
+                    if (
+                        page_index + 1
+                        < len(page_matches)
+                    ):
+                        page_end = (
+                            page_matches[
+                                page_index + 1
+                            ].start()
+                        )
+                    else:
+                        page_end = len(
+                            content
+                        )
+
+                    page_content = (
+                        content[
+                            page_start:
+                            page_end
+                        ].strip()
+                    )
+
+                    if not page_content:
+                        continue
+
+                    # =========================================
+                    # Find NIST CSF category blocks
+                    #
+                    # Examples:
+                    #
+                    # • Continuous Monitoring (DE.CM):
+                    # • Incident Management (RS.MA):
+                    # • Incident Recovery Plan Execution
+                    #   (RC.RP):
+                    # =========================================
+
+                    category_pattern = re.compile(
+                        r"(?m)^•\s*"
+                        r"(.+?)"
+                        r"\s+\("
+                        r"((?:GV|ID|PR|DE|RS|RC)"
+                        r"\.[A-Z]{2})"
+                        r"\):"
+                    )
+
+                    category_matches = list(
+                        category_pattern.finditer(
+                            page_content
+                        )
+                    )
+
+                    # =========================================
+                    # NIST CORE CATEGORY DOCUMENTS
+                    # =========================================
+
+                    if category_matches:
+                        for (
+                            category_index,
+                            category_match,
+                        ) in enumerate(
+                            category_matches
+                        ):
+                            category_name = (
+                                category_match
+                                .group(1)
+                                .strip()
+                            )
+
+                            category_id = (
+                                category_match
+                                .group(2)
+                                .strip()
+                            )
+
+                            category_start = (
+                                category_match.start()
+                            )
+
+                            if (
+                                category_index + 1
+                                < len(
+                                    category_matches
+                                )
+                            ):
+                                category_end = (
+                                    category_matches[
+                                        category_index + 1
+                                    ].start()
+                                )
+                            else:
+                                category_end = len(
+                                    page_content
+                                )
+
+                            category_content = (
+                                page_content[
+                                    category_start:
+                                    category_end
+                                ].strip()
+                            )
+
+                            if not category_content:
+                                continue
+
+                            function_prefix = (
+                                category_id
+                                .split(".")[0]
+                            )
+
+                            nist_function = (
+                                function_map.get(
+                                    function_prefix,
+                                    "",
+                                )
+                            )
+
+                            # Find all subcategory identifiers
+                            # belonging to this category.
+                            #
+                            # Example for RS.MA:
+                            # RS.MA-01
+                            # RS.MA-02
+                            # RS.MA-03
+                            # ...
+
+                            subcategory_ids = sorted(
+                                set(
+                                    re.findall(
+                                        (
+                                            r"\b"
+                                            + re.escape(
+                                                category_id
+                                            )
+                                            + r"-\d{2}"
+                                            + r"\b"
+                                        ),
+                                        category_content,
+                                    )
+                                )
+                            )
+
+                            all_identifiers = [
+                                category_id
+                            ]
+
+                            all_identifiers.extend(
+                                subcategory_ids
+                            )
+
+                            documents.append(
+                                Document(
+                                    text=(
+                                        category_content
+                                    ),
+                                    metadata={
+                                        "source": str(
+                                            relative_path
+                                        ),
+                                        "display_source": (
+                                            "NIST CSF 2.0 "
+                                            + category_id
+                                            + " - "
+                                            + category_name
+                                        ),
+                                        "file_name": (
+                                            file_path.name
+                                        ),
+                                        "document_type": (
+                                            "nist_csf"
+                                        ),
+                                        "nist_publication": (
+                                            "NIST CSWP 29"
+                                        ),
+                                        "nist_page": (
+                                            page_number
+                                        ),
+                                        "nist_function": (
+                                            nist_function
+                                        ),
+                                        "nist_category_id": (
+                                            category_id
+                                        ),
+                                        "nist_category_name": (
+                                            category_name
+                                        ),
+                                        "csf_identifiers": (
+                                            ", ".join(
+                                                all_identifiers
+                                            )
+                                        ),
+                                    },
+                                )
+                            )
+
+                        continue
+
+                    # =========================================
+                    # GENERAL NIST PAGE
+                    #
+                    # Pages that do not contain CSF Core
+                    # category blocks remain searchable.
+                    #
+                    # Examples:
+                    #   - Abstract
+                    #   - Overview
+                    #   - Profiles
+                    #   - Tiers
+                    #   - Glossary
+                    # =========================================
+
+                    functions_match = re.search(
+                        r"\*\*Detected CSF Functions:\*\*"
+                        r"\s*(.+)",
+                        page_content,
+                    )
+
+                    nist_functions = ""
+
+                    if functions_match:
+                        nist_functions = (
+                            functions_match
+                            .group(1)
+                            .strip()
+                        )
+
+                    identifiers_match = re.search(
+                        r"\*\*Detected CSF Identifiers:\*\*"
+                        r"\s*(.+)",
+                        page_content,
+                    )
+
+                    csf_identifiers = ""
+
+                    if identifiers_match:
+                        csf_identifiers = (
+                            identifiers_match
+                            .group(1)
+                            .strip()
+                        )
+
+                    documents.append(
+                        Document(
+                            text=(
+                                page_content
+                            ),
+                            metadata={
+                                "source": str(
+                                    relative_path
+                                ),
+                                "display_source": (
+                                    "NIST CSF 2.0 - Page "
+                                    + page_number
+                                ),
+                                "file_name": (
+                                    file_path.name
+                                ),
+                                "document_type": (
+                                    "nist_csf"
+                                ),
+                                "nist_publication": (
+                                    "NIST CSWP 29"
+                                ),
+                                "nist_page": (
+                                    page_number
+                                ),
+                                "nist_function": (
+                                    nist_functions
+                                ),
+                                "nist_category_id": (
+                                    ""
+                                ),
+                                "nist_category_name": (
+                                    ""
+                                ),
+                                "csf_identifiers": (
+                                    csf_identifiers
+                                ),
+                            },
+                        )
+                    )
+
+                continue
+
+            # =================================================
+            # STANDARD SOC KNOWLEDGE DOCUMENT
+            #
+            # Examples:
+            #   brute_force_playbook.md
+            #   phishing_playbook.md
+            #   malware_playbook.md
+            #   future runbooks/internal documents
             # =================================================
 
             documents.append(
@@ -227,10 +594,32 @@ class RAGService:
     def _calculate_fingerprint(self) -> str:
         hasher = hashlib.sha256()
 
-        # Include the index version so that a change in the
-        # indexing logic invalidates the previous Qdrant index.
+        # Include indexing configuration so that changes to
+        # indexing logic automatically invalidate Qdrant.
         hasher.update(
             self.index_version.encode(
+                "utf-8"
+            )
+        )
+
+        hasher.update(
+            self.embedding_model_name.encode(
+                "utf-8"
+            )
+        )
+
+        hasher.update(
+            str(
+                self.chunk_size
+            ).encode(
+                "utf-8"
+            )
+        )
+
+        hasher.update(
+            str(
+                self.chunk_overlap
+            ).encode(
                 "utf-8"
             )
         )
@@ -239,19 +628,27 @@ class RAGService:
             return hasher.hexdigest()
 
         files = sorted(
-            self.knowledge_base_path.rglob("*.md")
+            self.knowledge_base_path.rglob(
+                "*.md"
+            )
         )
 
         for file_path in files:
             try:
-                relative_path = file_path.relative_to(
-                    self.knowledge_base_path
+                relative_path = (
+                    file_path.relative_to(
+                        self.knowledge_base_path
+                    )
                 )
 
-                content = file_path.read_bytes()
+                content = (
+                    file_path.read_bytes()
+                )
 
                 hasher.update(
-                    str(relative_path).encode(
+                    str(
+                        relative_path
+                    ).encode(
                         "utf-8"
                     )
                 )
@@ -401,18 +798,23 @@ class RAGService:
             != current_fingerprint
         )
 
-        # If the knowledge base or indexing logic changed,
-        # rebuild the local persistent Qdrant index.
+        # Rebuild persistent Qdrant when:
+        #   - knowledge base changes
+        #   - indexing version changes
+        #   - embedding configuration changes
+        #   - chunk configuration changes
         if knowledge_changed:
             RAGService._client = None
             RAGService._vector_store = None
             RAGService._index = None
+            RAGService._fingerprint = None
 
             if self.qdrant_path.exists():
                 shutil.rmtree(
                     self.qdrant_path
                 )
 
+        # Load embedding model once per Python process.
         if RAGService._embed_model is None:
             RAGService._embed_model = (
                 HuggingFaceEmbedding(
@@ -436,6 +838,10 @@ class RAGService:
             client=client,
         )
 
+        # =================================================
+        # LOAD EXISTING QDRANT INDEX
+        # =================================================
+
         if (
             not knowledge_changed
             and self._collection_has_points(
@@ -455,20 +861,30 @@ class RAGService:
                 )
             )
 
+        # =================================================
+        # BUILD NEW QDRANT INDEX
+        # =================================================
+
         else:
             documents = (
                 self._load_documents()
             )
 
             if not documents:
-                RAGService._client = client
+                RAGService._client = (
+                    client
+                )
+
                 RAGService._vector_store = (
                     vector_store
                 )
+
                 RAGService._index = None
+
                 RAGService._fingerprint = (
                     current_fingerprint
                 )
+
                 return
 
             splitter = SentenceSplitter(
@@ -512,11 +928,18 @@ class RAGService:
                 current_fingerprint
             )
 
-        RAGService._client = client
+        RAGService._client = (
+            client
+        )
+
         RAGService._vector_store = (
             vector_store
         )
-        RAGService._index = index
+
+        RAGService._index = (
+            index
+        )
+
         RAGService._fingerprint = (
             current_fingerprint
         )
@@ -543,13 +966,17 @@ class RAGService:
             RAGService
             ._index
             .as_retriever(
-                similarity_top_k=limit,
+                similarity_top_k=(
+                    limit
+                ),
             )
         )
 
         try:
-            nodes = retriever.retrieve(
-                query
+            nodes = (
+                retriever.retrieve(
+                    query
+                )
             )
 
         except Exception as exc:
@@ -643,8 +1070,10 @@ class RAGService:
             document
             for document
             in scored_documents
-            if document["score"]
-            >= minimum_relative_score
+            if (
+                document["score"]
+                >= minimum_relative_score
+            )
         ]
 
         return relevant_documents[
