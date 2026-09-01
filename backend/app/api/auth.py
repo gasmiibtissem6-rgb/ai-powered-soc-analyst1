@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from app.core.security import get_current_user
-from app.models.user import User
+
+from app.core.security import get_current_user, require_admin
 from app.database.session import get_db
+from app.models.user import User
 from app.schemas.auth import (
     LoginRequest,
     RegisterRequest,
@@ -26,7 +27,14 @@ router = APIRouter(
 def register(
     payload: RegisterRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
+    """
+    Create a new SOC analyst account.
+
+    Only administrators are allowed to create users.
+    Newly created accounts receive the analyst role.
+    """
     try:
         return AuthService.register(
             db=db,
@@ -62,6 +70,8 @@ def login(
         )
 
     return result
+
+
 @router.get(
     "/me",
     response_model=UserResponse,

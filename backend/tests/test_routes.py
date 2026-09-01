@@ -22,3 +22,20 @@ def test_core_api_routes_are_registered():
     missing = expected_paths - paths
 
     assert not missing, f"Missing API routes: {sorted(missing)}"
+
+
+def test_register_route_requires_admin():
+    register_route = next(
+        route
+        for route in app.routes
+        if getattr(route, "path", None) == "/auth/register"
+        and "POST" in getattr(route, "methods", set())
+    )
+
+    dependency_names = {
+        dependency.call.__name__
+        for dependency in register_route.dependant.dependencies
+        if getattr(dependency, "call", None) is not None
+    }
+
+    assert "require_admin" in dependency_names
