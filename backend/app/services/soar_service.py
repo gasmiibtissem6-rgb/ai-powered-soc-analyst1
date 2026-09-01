@@ -91,26 +91,6 @@ class SOARService:
         db: Session,
         action_id: int,
     ):
-        return (
-            db.query(SOARActionLog)
-            .filter(
-                SOARActionLog.action_id
-                == action_id
-            )
-            .order_by(
-                SOARActionLog.id.asc()
-            )
-            .all()
-        )
-        # =====================================================
-    # GET ACTION AUDIT LOGS
-    # =====================================================
-
-    @staticmethod
-    def get_action_logs(
-        db: Session,
-        action_id: int,
-    ):
         """
         Return the complete audit history
         for one SOAR action.
