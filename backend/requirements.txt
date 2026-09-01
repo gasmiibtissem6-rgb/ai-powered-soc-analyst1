@@ -67,6 +67,8 @@ pytest==8.4.2
 xgboost==2.1.4
 qdrant-client==1.15.1
 llama-index==0.12.52
+llama-index-agent-openai==0.4.12
+llama-index-llms-openai==0.4.7
 sentence-transformers==3.4.1
 banks==2.2.0
 llama-index-vector-stores-qdrant==0.4.3
