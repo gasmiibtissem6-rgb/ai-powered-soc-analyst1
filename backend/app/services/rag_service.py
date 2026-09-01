@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -72,6 +73,10 @@ class RAGService:
         self.chunk_size = 512
         self.chunk_overlap = 80
 
+        # Increment this value whenever the indexing logic changes.
+        # This forces Qdrant to rebuild the vector index.
+        self.index_version = "2"
+
         self._initialize()
 
     # =====================================================
@@ -101,13 +106,114 @@ class RAGService:
                 self.knowledge_base_path
             )
 
+            # =================================================
+            # MITRE ATT&CK
+            # One LlamaIndex Document per ATT&CK technique
+            # =================================================
+
+            if (
+                relative_path.as_posix()
+                == "mitre/mitre_enterprise_attack.md"
+            ):
+                pattern = re.compile(
+                    r"(?m)^## "
+                    r"(T\d{4}(?:\.\d{3})?)"
+                    r" - "
+                    r"(.+?)"
+                    r"\n"
+                )
+
+                matches = list(
+                    pattern.finditer(content)
+                )
+
+                for index, match in enumerate(
+                    matches
+                ):
+                    technique_id = (
+                        match.group(1).strip()
+                    )
+
+                    technique_name = (
+                        match.group(2).strip()
+                    )
+
+                    section_start = (
+                        match.start()
+                    )
+
+                    if index + 1 < len(matches):
+                        section_end = (
+                            matches[
+                                index + 1
+                            ].start()
+                        )
+                    else:
+                        section_end = len(
+                            content
+                        )
+
+                    technique_content = (
+                        content[
+                            section_start:
+                            section_end
+                        ].strip()
+                    )
+
+                    if not technique_content:
+                        continue
+
+                    documents.append(
+                        Document(
+                            text=technique_content,
+                            metadata={
+                                "source": str(
+                                    relative_path
+                                ),
+                                "display_source": (
+                                    "MITRE ATT&CK "
+                                    + technique_id
+                                    + " - "
+                                    + technique_name
+                                ),
+                                "file_name": (
+                                    file_path.name
+                                ),
+                                "document_type": (
+                                    "mitre_attack"
+                                ),
+                                "technique_id": (
+                                    technique_id
+                                ),
+                                "technique_name": (
+                                    technique_name
+                                ),
+                            },
+                        )
+                    )
+
+                continue
+
+            # =================================================
+            # STANDARD KNOWLEDGE DOCUMENT
+            # =================================================
+
             documents.append(
                 Document(
                     text=content,
                     metadata={
-                        "source": str(relative_path),
-                        "file_name": file_path.name,
-                        "document_type": "soc_knowledge",
+                        "source": str(
+                            relative_path
+                        ),
+                        "display_source": str(
+                            relative_path
+                        ),
+                        "file_name": (
+                            file_path.name
+                        ),
+                        "document_type": (
+                            "soc_knowledge"
+                        ),
                     },
                 )
             )
@@ -120,6 +226,14 @@ class RAGService:
 
     def _calculate_fingerprint(self) -> str:
         hasher = hashlib.sha256()
+
+        # Include the index version so that a change in the
+        # indexing logic invalidates the previous Qdrant index.
+        hasher.update(
+            self.index_version.encode(
+                "utf-8"
+            )
+        )
 
         if not self.knowledge_base_path.exists():
             return hasher.hexdigest()
@@ -142,7 +256,9 @@ class RAGService:
                     )
                 )
 
-                hasher.update(content)
+                hasher.update(
+                    content
+                )
 
             except Exception:
                 continue
@@ -176,13 +292,18 @@ class RAGService:
     ) -> None:
 
         data = {
+            "index_version": (
+                self.index_version
+            ),
             "collection_name": (
                 self.collection_name
             ),
             "embedding_model": (
                 self.embedding_model_name
             ),
-            "chunk_size": self.chunk_size,
+            "chunk_size": (
+                self.chunk_size
+            ),
             "chunk_overlap": (
                 self.chunk_overlap
             ),
@@ -280,8 +401,8 @@ class RAGService:
             != current_fingerprint
         )
 
-        # If the knowledge base changed, rebuild the local
-        # persistent Qdrant index.
+        # If the knowledge base or indexing logic changed,
+        # rebuild the local persistent Qdrant index.
         if knowledge_changed:
             RAGService._client = None
             RAGService._vector_store = None
@@ -444,17 +565,23 @@ class RAGService:
         scored_documents = []
 
         for node_with_score in nodes:
-            score = node_with_score.score
+            score = (
+                node_with_score.score
+            )
 
             if score is None:
                 continue
 
-            score = float(score)
+            score = float(
+                score
+            )
 
             if score < min_score:
                 continue
 
-            node = node_with_score.node
+            node = (
+                node_with_score.node
+            )
 
             metadata = (
                 node.metadata
@@ -469,6 +596,9 @@ class RAGService:
                 {
                     "source": (
                         metadata.get(
+                            "display_source"
+                        )
+                        or metadata.get(
                             "source"
                         )
                         or metadata.get(
@@ -479,8 +609,12 @@ class RAGService:
                     "content": (
                         node.get_content()
                     ),
-                    "score": score,
-                    "metadata": metadata,
+                    "score": (
+                        score
+                    ),
+                    "metadata": (
+                        metadata
+                    ),
                 }
             )
 
