@@ -36,6 +36,7 @@ class SOARExecutorService:
         - block_ip
         - isolate_endpoint
         - disable_user
+        - send_notification
         """
 
         normalized_action = (
@@ -91,6 +92,11 @@ class SOARExecutorService:
 
         if normalized_action == "disable_user":
             return SOARExecutorService.disable_user(
+                normalized_target
+            )
+
+        if normalized_action == "send_notification":
+            return SOARExecutorService.send_notification(
                 normalized_target
             )
 
@@ -423,6 +429,113 @@ class SOARExecutorService:
             "unknown",
             "unknown-user",
             "unknown_user",
+            "none",
+            "null",
+            "n/a",
+            "na",
+            "undefined",
+        }
+
+        return normalized not in unsafe_values
+
+    # =====================================================
+    # SEND NOTIFICATION
+    # =====================================================
+
+    @staticmethod
+    def send_notification(
+        target: str,
+    ) -> Dict[str, Any]:
+        """
+        Prepare a SOC notification.
+
+        The target may represent a SOC team, channel,
+        or future Slack/Teams destination.
+
+        Real external notification delivery remains
+        disabled until a notification adapter is configured.
+        """
+
+        if not SOARExecutorService.is_safe_notification_target(
+            target
+        ):
+            return {
+                "success": False,
+                "executed": False,
+                "simulated": False,
+                "mode": settings.SOAR_EXECUTION_MODE,
+                "action_type": "send_notification",
+                "target": target,
+                "message": (
+                    "SOAR safety policy rejected "
+                    "the notification target."
+                ),
+            }
+
+        if SOARExecutorService.is_dry_run():
+            return {
+                "success": True,
+                "executed": False,
+                "simulated": True,
+                "mode": "dry_run",
+                "action_type": "send_notification",
+                "target": target,
+                "message": (
+                    f"DRY RUN: notification to "
+                    f"{target} simulated successfully."
+                ),
+            }
+
+        if not settings.SOAR_ENABLE_SEND_NOTIFICATION:
+            return {
+                "success": False,
+                "executed": False,
+                "simulated": False,
+                "mode": settings.SOAR_EXECUTION_MODE,
+                "action_type": "send_notification",
+                "target": target,
+                "message": (
+                    "Real notifications are disabled by "
+                    "SOAR_ENABLE_SEND_NOTIFICATION."
+                ),
+            }
+
+        return {
+            "success": False,
+            "executed": False,
+            "simulated": False,
+            "mode": settings.SOAR_EXECUTION_MODE,
+            "action_type": "send_notification",
+            "target": target,
+            "message": (
+                "Notifications are enabled in configuration "
+                "but no production Slack/Teams notification "
+                "adapter has been configured yet."
+            ),
+        }
+
+    # =====================================================
+    # NOTIFICATION TARGET VALIDATION
+    # =====================================================
+
+    @staticmethod
+    def is_safe_notification_target(
+        target: str,
+    ) -> bool:
+        """
+        Reject unusable notification destinations.
+        """
+
+        if not target:
+            return False
+
+        normalized = target.strip().lower()
+
+        unsafe_values = {
+            "",
+            "unknown",
+            "unknown-target",
+            "unknown_target",
             "none",
             "null",
             "n/a",

@@ -48,6 +48,8 @@ class Settings(BaseSettings):
 
     SOAR_ENABLE_DISABLE_USER: bool = False
 
+    SOAR_ENABLE_SEND_NOTIFICATION: bool = False
+
 
     # =====================================================
     # PYDANTIC SETTINGS
