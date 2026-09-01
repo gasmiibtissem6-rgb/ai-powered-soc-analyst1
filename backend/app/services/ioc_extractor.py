@@ -1,6 +1,6 @@
 import ipaddress
 import re
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 
@@ -40,6 +40,40 @@ class IOCExtractor:
         r"\b[a-fA-F0-9]{64}\b"
     )
 
+    # Common file extensions that can be falsely detected as TLDs.
+    FILE_EXTENSIONS = {
+        "conf",
+        "config",
+        "cfg",
+        "ini",
+        "log",
+        "txt",
+        "json",
+        "xml",
+        "yaml",
+        "yml",
+        "csv",
+        "md",
+        "py",
+        "sh",
+        "bash",
+        "service",
+        "socket",
+        "pid",
+        "lock",
+        "bak",
+        "old",
+        "tmp",
+        "swp",
+        "db",
+        "sqlite",
+        "sql",
+        "pem",
+        "key",
+        "crt",
+        "cer",
+    }
+
     # =====================================================
     # IP ADDRESSES
     # =====================================================
@@ -74,42 +108,86 @@ class IOCExtractor:
     # DOMAINS
     # =====================================================
 
+    def _is_valid_domain_candidate(self, domain: str) -> bool:
+        """
+        Validate a domain candidate extracted from free text.
+
+        This filters common filenames such as:
+        subscriptions.conf, application.log, config.yaml, etc.
+        """
+
+        domain = domain.lower().strip(".")
+
+        if not domain or "." not in domain:
+            return False
+
+        # Reject IP addresses.
+        try:
+            ipaddress.ip_address(domain)
+            return False
+        except ValueError:
+            pass
+
+        labels = domain.split(".")
+
+        if len(labels) < 2:
+            return False
+
+        # Domain labels cannot start or end with a hyphen.
+        for label in labels:
+            if not label:
+                return False
+
+            if label.startswith("-") or label.endswith("-"):
+                return False
+
+        suffix = labels[-1]
+
+        # Avoid common filenames being interpreted as domains.
+        if suffix in self.FILE_EXTENSIONS:
+            return False
+
+        return True
+
     def extract_domains(
         self,
         text: str,
         urls: Optional[List[str]] = None,
     ) -> List[str]:
 
-        domains = set(
-            self.DOMAIN_PATTERN.findall(text or "")
-        )
+        valid_domains = set()
 
-        # Add domains extracted from URLs
+        # Domains found directly in free text.
+        for candidate in self.DOMAIN_PATTERN.findall(text or ""):
+            domain = candidate.lower()
+
+            if self._is_valid_domain_candidate(domain):
+                valid_domains.add(domain)
+
+        # Domains explicitly present inside URLs are trusted as URL hosts.
+        # They are handled separately so a legitimate URL using an unusual
+        # suffix is not discarded by the free-text filename filter.
         for url in urls or []:
             try:
                 parsed = urlparse(url)
+                hostname = parsed.hostname
 
-                if parsed.hostname:
-                    domains.add(
-                        parsed.hostname.lower()
-                    )
+                if not hostname:
+                    continue
 
-            except Exception:
+                hostname = hostname.lower()
+
+                try:
+                    ipaddress.ip_address(hostname)
+                    continue
+                except ValueError:
+                    pass
+
+                if self.DOMAIN_PATTERN.fullmatch(hostname):
+                    valid_domains.add(hostname)
+
+            except (ValueError, TypeError):
                 continue
-
-        # Remove IP addresses accidentally matched as domains
-        valid_domains = set()
-
-        for domain in domains:
-            try:
-                ipaddress.ip_address(domain)
-                continue
-            except ValueError:
-                pass
-
-            valid_domains.add(
-                domain.lower()
-            )
 
         return sorted(valid_domains)
 
