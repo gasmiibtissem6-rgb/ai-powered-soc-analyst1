@@ -99,13 +99,15 @@ class CorrelationService:
             "cleartext",
             "client body",
             "web",
-            "uri",
             "request",
         )
 
-        if any(
-            keyword in text
-            for keyword in http_keywords
+        if (
+            any(
+                keyword in text
+                for keyword in http_keywords
+            )
+            or " uri " in f" {text} "
         ):
             return "http"
 
