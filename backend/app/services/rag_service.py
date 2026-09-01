@@ -80,7 +80,7 @@ class RAGService:
 
         # Increment this value whenever indexing logic changes.
         # This automatically invalidates the previous Qdrant index.
-        self.index_version = "4"
+        self.index_version = "5"
 
         self._initialize()
 
@@ -210,6 +210,153 @@ class RAGService:
                                 ),
                                 "technique_name": (
                                     technique_name
+                                ),
+                            },
+                        )
+                    )
+
+                continue
+
+                        # =================================================
+            # CWE - COMMON WEAKNESS ENUMERATION
+            #
+            # One LlamaIndex Document per CWE weakness.
+            #
+            # Examples:
+            #   CWE-89 - SQL Injection
+            #   CWE-79 - Cross-site Scripting
+            # =================================================
+
+            if (
+                relative_path_string
+                == "cwe/cwe_weaknesses.md"
+            ):
+                pattern = re.compile(
+                    r"(?m)^## CWE-"
+                    r"(\d+)"
+                    r" - "
+                    r"(.+?)"
+                    r"\n"
+                )
+
+                matches = list(
+                    pattern.finditer(
+                        content
+                    )
+                )
+
+                for index, match in enumerate(
+                    matches
+                ):
+                    cwe_number = (
+                        match.group(1)
+                        .strip()
+                    )
+
+                    cwe_id = (
+                        "CWE-"
+                        + cwe_number
+                    )
+
+                    cwe_name = (
+                        match.group(2)
+                        .strip()
+                    )
+
+                    section_start = (
+                        match.start()
+                    )
+
+                    if (
+                        index + 1
+                        < len(matches)
+                    ):
+                        section_end = (
+                            matches[
+                                index + 1
+                            ].start()
+                        )
+                    else:
+                        section_end = len(
+                            content
+                        )
+
+                    cwe_content = (
+                        content[
+                            section_start:
+                            section_end
+                        ].strip()
+                    )
+
+                    if not cwe_content:
+                        continue
+
+                    abstraction_match = re.search(
+                        r"\*\*Abstraction:\*\*\s*(.+)",
+                        cwe_content,
+                    )
+
+                    status_match = re.search(
+                        r"\*\*Status:\*\*\s*(.+)",
+                        cwe_content,
+                    )
+
+                    likelihood_match = re.search(
+                        r"\*\*Likelihood of Exploit:\*\*"
+                        r"\s*(.+)",
+                        cwe_content,
+                    )
+
+                    abstraction = (
+                        abstraction_match.group(1).strip()
+                        if abstraction_match
+                        else ""
+                    )
+
+                    status = (
+                        status_match.group(1).strip()
+                        if status_match
+                        else ""
+                    )
+
+                    likelihood = (
+                        likelihood_match.group(1).strip()
+                        if likelihood_match
+                        else ""
+                    )
+
+                    documents.append(
+                        Document(
+                            text=cwe_content,
+                            metadata={
+                                "source": str(
+                                    relative_path
+                                ),
+                                "display_source": (
+                                    cwe_id
+                                    + " - "
+                                    + cwe_name
+                                ),
+                                "file_name": (
+                                    file_path.name
+                                ),
+                                "document_type": (
+                                    "cwe"
+                                ),
+                                "cwe_id": (
+                                    cwe_id
+                                ),
+                                "cwe_name": (
+                                    cwe_name
+                                ),
+                                "cwe_abstraction": (
+                                    abstraction
+                                ),
+                                "cwe_status": (
+                                    status
+                                ),
+                                "cwe_likelihood": (
+                                    likelihood
                                 ),
                             },
                         )
