@@ -31,6 +31,8 @@ class RAGService:
 
     Supported knowledge sources:
         - MITRE ATT&CK
+        - CWE
+        - CVE
         - NIST Cybersecurity Framework 2.0
         - SOC playbooks / internal Markdown documents
 
@@ -78,9 +80,8 @@ class RAGService:
         self.chunk_size = 512
         self.chunk_overlap = 80
 
-        # Increment this value whenever indexing logic changes.
-        # This automatically invalidates the previous Qdrant index.
-        self.index_version = "5"
+        # Increment this whenever indexing logic changes.
+        self.index_version = "6"
 
         self._initialize()
 
@@ -117,12 +118,6 @@ class RAGService:
 
             # =================================================
             # MITRE ATT&CK
-            #
-            # One LlamaIndex Document per ATT&CK technique.
-            #
-            # Examples:
-            #   T1110 - Brute Force
-            #   T1053.005 - Scheduled Task/Job
             # =================================================
 
             if (
@@ -186,9 +181,7 @@ class RAGService:
 
                     documents.append(
                         Document(
-                            text=(
-                                technique_content
-                            ),
+                            text=technique_content,
                             metadata={
                                 "source": str(
                                     relative_path
@@ -217,14 +210,8 @@ class RAGService:
 
                 continue
 
-                        # =================================================
+            # =================================================
             # CWE - COMMON WEAKNESS ENUMERATION
-            #
-            # One LlamaIndex Document per CWE weakness.
-            #
-            # Examples:
-            #   CWE-89 - SQL Injection
-            #   CWE-79 - Cross-site Scripting
             # =================================================
 
             if (
@@ -365,18 +352,159 @@ class RAGService:
                 continue
 
             # =================================================
+            # CVE - COMMON VULNERABILITIES AND EXPOSURES
+            # =================================================
+
+            if (
+                relative_path_string
+                == "cve/cve_selected.md"
+            ):
+                pattern = re.compile(
+                    r"(?m)^## "
+                    r"(CVE-\d{4}-\d+)"
+                    r" - "
+                    r"(.+?)"
+                    r"\n"
+                )
+
+                matches = list(
+                    pattern.finditer(
+                        content
+                    )
+                )
+
+                for index, match in enumerate(
+                    matches
+                ):
+                    cve_id = (
+                        match.group(1)
+                        .strip()
+                    )
+
+                    cve_title = (
+                        match.group(2)
+                        .strip()
+                    )
+
+                    section_start = (
+                        match.start()
+                    )
+
+                    if (
+                        index + 1
+                        < len(matches)
+                    ):
+                        section_end = (
+                            matches[
+                                index + 1
+                            ].start()
+                        )
+                    else:
+                        section_end = len(
+                            content
+                        )
+
+                    cve_content = (
+                        content[
+                            section_start:
+                            section_end
+                        ].strip()
+                    )
+
+                    if not cve_content:
+                        continue
+
+                    cwe_match = re.search(
+                        r"\*\*CWE:\*\*\s*(.+)",
+                        cve_content,
+                    )
+
+                    cvss_score_match = re.search(
+                        r"\*\*CVSS Base Score:\*\*"
+                        r"\s*(.+)",
+                        cve_content,
+                    )
+
+                    cvss_severity_match = re.search(
+                        r"\*\*CVSS Severity:\*\*"
+                        r"\s*(.+)",
+                        cve_content,
+                    )
+
+                    published_match = re.search(
+                        r"\*\*Published:\*\*"
+                        r"\s*(.+)",
+                        cve_content,
+                    )
+
+                    cwe_ids = (
+                        cwe_match.group(1).strip()
+                        if cwe_match
+                        else ""
+                    )
+
+                    cvss_score = (
+                        cvss_score_match.group(1).strip()
+                        if cvss_score_match
+                        else ""
+                    )
+
+                    cvss_severity = (
+                        cvss_severity_match.group(1).strip()
+                        if cvss_severity_match
+                        else ""
+                    )
+
+                    published = (
+                        published_match.group(1).strip()
+                        if published_match
+                        else ""
+                    )
+
+                    documents.append(
+                        Document(
+                            text=cve_content,
+                            metadata={
+                                "source": str(
+                                    relative_path
+                                ),
+                                "display_source": (
+                                    cve_id
+                                    + " - "
+                                    + cve_title
+                                ),
+                                "file_name": (
+                                    file_path.name
+                                ),
+                                "document_type": (
+                                    "cve"
+                                ),
+                                "cve_id": (
+                                    cve_id
+                                ),
+                                "cve_title": (
+                                    cve_title
+                                ),
+                                "cwe_ids": (
+                                    cwe_ids
+                                ),
+                                "cvss_score": (
+                                    cvss_score
+                                ),
+                                "cvss_severity": (
+                                    cvss_severity
+                                ),
+                                "published": (
+                                    published
+                                ),
+                            },
+                        )
+                    )
+
+                continue
+
+            # =================================================
             # NIST CYBERSECURITY FRAMEWORK 2.0
-            #
-            # Core pages:
-            #   One LlamaIndex Document per CSF category.
-            #
-            # Examples:
-            #   DE.CM - Continuous Monitoring
-            #   RS.MA - Incident Management
-            #   RC.RP - Incident Recovery Plan Execution
-            #
-            # General pages:
-            #   One LlamaIndex Document per PDF page.
             # =================================================
 
             if (
@@ -444,17 +572,6 @@ class RAGService:
                     if not page_content:
                         continue
 
-                    # =========================================
-                    # Find NIST CSF category blocks
-                    #
-                    # Examples:
-                    #
-                    # • Continuous Monitoring (DE.CM):
-                    # • Incident Management (RS.MA):
-                    # • Incident Recovery Plan Execution
-                    #   (RC.RP):
-                    # =========================================
-
                     category_pattern = re.compile(
                         r"(?m)^•\s*"
                         r"(.+?)"
@@ -469,10 +586,6 @@ class RAGService:
                             page_content
                         )
                     )
-
-                    # =========================================
-                    # NIST CORE CATEGORY DOCUMENTS
-                    # =========================================
 
                     if category_matches:
                         for (
@@ -534,15 +647,6 @@ class RAGService:
                                     "",
                                 )
                             )
-
-                            # Find all subcategory identifiers
-                            # belonging to this category.
-                            #
-                            # Example for RS.MA:
-                            # RS.MA-01
-                            # RS.MA-02
-                            # RS.MA-03
-                            # ...
 
                             subcategory_ids = sorted(
                                 set(
@@ -615,20 +719,6 @@ class RAGService:
 
                         continue
 
-                    # =========================================
-                    # GENERAL NIST PAGE
-                    #
-                    # Pages that do not contain CSF Core
-                    # category blocks remain searchable.
-                    #
-                    # Examples:
-                    #   - Abstract
-                    #   - Overview
-                    #   - Profiles
-                    #   - Tiers
-                    #   - Glossary
-                    # =========================================
-
                     functions_match = re.search(
                         r"\*\*Detected CSF Functions:\*\*"
                         r"\s*(.+)",
@@ -661,9 +751,7 @@ class RAGService:
 
                     documents.append(
                         Document(
-                            text=(
-                                page_content
-                            ),
+                            text=page_content,
                             metadata={
                                 "source": str(
                                     relative_path
@@ -687,12 +775,8 @@ class RAGService:
                                 "nist_function": (
                                     nist_functions
                                 ),
-                                "nist_category_id": (
-                                    ""
-                                ),
-                                "nist_category_name": (
-                                    ""
-                                ),
+                                "nist_category_id": "",
+                                "nist_category_name": "",
                                 "csf_identifiers": (
                                     csf_identifiers
                                 ),
@@ -704,12 +788,6 @@ class RAGService:
 
             # =================================================
             # STANDARD SOC KNOWLEDGE DOCUMENT
-            #
-            # Examples:
-            #   brute_force_playbook.md
-            #   phishing_playbook.md
-            #   malware_playbook.md
-            #   future runbooks/internal documents
             # =================================================
 
             documents.append(
@@ -741,8 +819,6 @@ class RAGService:
     def _calculate_fingerprint(self) -> str:
         hasher = hashlib.sha256()
 
-        # Include indexing configuration so that changes to
-        # indexing logic automatically invalidate Qdrant.
         hasher.update(
             self.index_version.encode(
                 "utf-8"
@@ -922,7 +998,6 @@ class RAGService:
             self._calculate_fingerprint()
         )
 
-        # Reuse resources already loaded in this process.
         if (
             RAGService._client is not None
             and RAGService._index is not None
@@ -945,11 +1020,6 @@ class RAGService:
             != current_fingerprint
         )
 
-        # Rebuild persistent Qdrant when:
-        #   - knowledge base changes
-        #   - indexing version changes
-        #   - embedding configuration changes
-        #   - chunk configuration changes
         if knowledge_changed:
             RAGService._client = None
             RAGService._vector_store = None
@@ -961,7 +1031,6 @@ class RAGService:
                     self.qdrant_path
                 )
 
-        # Load embedding model once per Python process.
         if RAGService._embed_model is None:
             RAGService._embed_model = (
                 HuggingFaceEmbedding(
@@ -985,10 +1054,6 @@ class RAGService:
             client=client,
         )
 
-        # =================================================
-        # LOAD EXISTING QDRANT INDEX
-        # =================================================
-
         if (
             not knowledge_changed
             and self._collection_has_points(
@@ -1008,30 +1073,18 @@ class RAGService:
                 )
             )
 
-        # =================================================
-        # BUILD NEW QDRANT INDEX
-        # =================================================
-
         else:
             documents = (
                 self._load_documents()
             )
 
             if not documents:
-                RAGService._client = (
-                    client
-                )
-
-                RAGService._vector_store = (
-                    vector_store
-                )
-
+                RAGService._client = client
+                RAGService._vector_store = vector_store
                 RAGService._index = None
-
                 RAGService._fingerprint = (
                     current_fingerprint
                 )
-
                 return
 
             splitter = SentenceSplitter(
@@ -1075,18 +1128,9 @@ class RAGService:
                 current_fingerprint
             )
 
-        RAGService._client = (
-            client
-        )
-
-        RAGService._vector_store = (
-            vector_store
-        )
-
-        RAGService._index = (
-            index
-        )
-
+        RAGService._client = client
+        RAGService._vector_store = vector_store
+        RAGService._index = index
         RAGService._fingerprint = (
             current_fingerprint
         )
@@ -1109,12 +1153,17 @@ class RAGService:
         if RAGService._index is None:
             return []
 
+        candidate_limit = max(
+            limit * 5,
+            20,
+        )
+
         retriever = (
             RAGService
             ._index
             .as_retriever(
                 similarity_top_k=(
-                    limit
+                    candidate_limit
                 ),
             )
         )
@@ -1137,6 +1186,31 @@ class RAGService:
             return []
 
         scored_documents = []
+
+        query_upper = (
+            query.upper()
+        )
+
+        requested_cve_ids = set(
+            re.findall(
+                r"\bCVE-\d{4}-\d+\b",
+                query_upper,
+            )
+        )
+
+        requested_cwe_ids = set(
+            re.findall(
+                r"\bCWE-\d+\b",
+                query_upper,
+            )
+        )
+
+        requested_mitre_ids = set(
+            re.findall(
+                r"\bT\d{4}(?:\.\d{3})?\b",
+                query_upper,
+            )
+        )
 
         for node_with_score in nodes:
             score = (
@@ -1166,6 +1240,50 @@ class RAGService:
                 else {}
             )
 
+            ranking_score = score
+
+            cve_id = str(
+                metadata.get(
+                    "cve_id",
+                    ""
+                )
+            ).upper()
+
+            cwe_id = str(
+                metadata.get(
+                    "cwe_id",
+                    ""
+                )
+            ).upper()
+
+            technique_id = str(
+                metadata.get(
+                    "technique_id",
+                    ""
+                )
+            ).upper()
+
+            if (
+                cve_id
+                and cve_id
+                in requested_cve_ids
+            ):
+                ranking_score += 1.0
+
+            if (
+                cwe_id
+                and cwe_id
+                in requested_cwe_ids
+            ):
+                ranking_score += 1.0
+
+            if (
+                technique_id
+                and technique_id
+                in requested_mitre_ids
+            ):
+                ranking_score += 1.0
+
             scored_documents.append(
                 {
                     "source": (
@@ -1183,12 +1301,11 @@ class RAGService:
                     "content": (
                         node.get_content()
                     ),
-                    "score": (
-                        score
+                    "score": score,
+                    "_ranking_score": (
+                        ranking_score
                     ),
-                    "metadata": (
-                        metadata
-                    ),
+                    "metadata": metadata,
                 }
             )
 
@@ -1197,31 +1314,146 @@ class RAGService:
 
         scored_documents.sort(
             key=lambda item: item[
-                "score"
+                "_ranking_score"
             ],
             reverse=True,
         )
 
-        best_score = (
-            scored_documents[0][
-                "score"
+        deduplicated_documents = []
+        seen_documents = set()
+
+        for document in scored_documents:
+            metadata = document[
+                "metadata"
             ]
+
+            document_type = str(
+                metadata.get(
+                    "document_type",
+                    ""
+                )
+            )
+
+            if document_type == "cve":
+                unique_key = (
+                    "cve",
+                    metadata.get(
+                        "cve_id"
+                    ),
+                )
+
+            elif document_type == "cwe":
+                unique_key = (
+                    "cwe",
+                    metadata.get(
+                        "cwe_id"
+                    ),
+                )
+
+            elif (
+                document_type
+                == "mitre_attack"
+            ):
+                unique_key = (
+                    "mitre_attack",
+                    metadata.get(
+                        "technique_id"
+                    ),
+                )
+
+            elif (
+                document_type
+                == "nist_csf"
+            ):
+                unique_key = (
+                    "nist_csf",
+                    metadata.get(
+                        "nist_category_id"
+                    )
+                    or metadata.get(
+                        "nist_page"
+                    ),
+                )
+
+            else:
+                unique_key = (
+                    document_type,
+                    document.get(
+                        "source"
+                    ),
+                )
+
+            if unique_key in seen_documents:
+                continue
+
+            seen_documents.add(
+                unique_key
+            )
+
+            deduplicated_documents.append(
+                document
+            )
+
+        if not deduplicated_documents:
+            return []
+
+        best_semantic_score = max(
+            document["score"]
+            for document
+            in deduplicated_documents
         )
 
         minimum_relative_score = (
-            best_score
+            best_semantic_score
             * relative_threshold
         )
 
-        relevant_documents = [
-            document
-            for document
-            in scored_documents
+        relevant_documents = []
+
+        for document in deduplicated_documents:
+            metadata = document[
+                "metadata"
+            ]
+
+            exact_identifier_match = (
+                str(
+                    metadata.get(
+                        "cve_id",
+                        ""
+                    )
+                ).upper()
+                in requested_cve_ids
+                or
+                str(
+                    metadata.get(
+                        "cwe_id",
+                        ""
+                    )
+                ).upper()
+                in requested_cwe_ids
+                or
+                str(
+                    metadata.get(
+                        "technique_id",
+                        ""
+                    )
+                ).upper()
+                in requested_mitre_ids
+            )
+
             if (
                 document["score"]
                 >= minimum_relative_score
-            )
-        ]
+                or exact_identifier_match
+            ):
+                document.pop(
+                    "_ranking_score",
+                    None,
+                )
+
+                relevant_documents.append(
+                    document
+                )
 
         return relevant_documents[
             :limit
