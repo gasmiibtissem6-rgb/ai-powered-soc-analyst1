@@ -23,7 +23,8 @@ from app.services.ai_analysis_service import AIAnalysisService
 from app.services.llm_service import LLMService
 from app.services.mitre_service import MitreService
 from app.agents.soc_graph import threat_intelligence_agent
-
+from app.core.security import require_admin, require_analyst
+from app.models.user import User
 
 router = APIRouter(
     prefix="/ai-analysis",
@@ -41,6 +42,7 @@ router = APIRouter(
 )
 def get_analyses(
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
     return AIAnalysisService.get_analyses(db)
 
@@ -56,6 +58,7 @@ def get_analyses(
 def get_analyses_by_incident(
     incident_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
 
     incident = (
@@ -97,6 +100,7 @@ def get_analyses_by_incident(
 def get_analysis(
     analysis_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
 
     analysis = AIAnalysisService.get_analysis(
@@ -125,6 +129,7 @@ def get_analysis(
 def create_analysis(
     analysis_data: AIAnalysisCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
 
     analysis = AIAnalysisService.create_analysis(
@@ -153,6 +158,7 @@ def update_analysis(
     analysis_id: int,
     analysis_data: AIAnalysisUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
 
     analysis = AIAnalysisService.update_analysis(
@@ -181,6 +187,7 @@ def update_analysis(
 def delete_analysis(
     analysis_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
 
     deleted = AIAnalysisService.delete_analysis(
@@ -206,6 +213,7 @@ def delete_analysis(
 def generate_ai_analysis(
     incident_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
 
     # -----------------------------------------------------

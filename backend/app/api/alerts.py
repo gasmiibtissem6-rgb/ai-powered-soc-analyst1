@@ -3,8 +3,10 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.security import require_admin, require_analyst
 from app.database.session import get_db
-from app.schemas.alert import AlertCreate, AlertUpdate, AlertResponse
+from app.models.user import User
+from app.schemas.alert import AlertCreate, AlertResponse, AlertUpdate
 from app.services.alert_service import AlertService
 
 
@@ -22,8 +24,12 @@ router = APIRouter(
 def create_alert(
     alert_data: AlertCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
-    return AlertService.create_alert(db, alert_data)
+    return AlertService.create_alert(
+        db,
+        alert_data,
+    )
 
 
 @router.get(
@@ -32,6 +38,7 @@ def create_alert(
 )
 def get_alerts(
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
     return AlertService.get_alerts(db)
 
@@ -43,8 +50,12 @@ def get_alerts(
 def get_alert(
     alert_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
-    alert = AlertService.get_alert(db, alert_id)
+    alert = AlertService.get_alert(
+        db,
+        alert_id,
+    )
 
     if not alert:
         raise HTTPException(
@@ -63,6 +74,7 @@ def update_alert(
     alert_id: int,
     alert_data: AlertUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
     alert = AlertService.update_alert(
         db,
@@ -86,8 +98,12 @@ def update_alert(
 def delete_alert(
     alert_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
-    deleted = AlertService.delete_alert(db, alert_id)
+    deleted = AlertService.delete_alert(
+        db,
+        alert_id,
+    )
 
     if not deleted:
         raise HTTPException(

@@ -3,12 +3,14 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.security import require_admin, require_analyst
 from app.database.session import get_db
 from app.models.incident import Incident
+from app.models.user import User
 from app.schemas.incident import (
     IncidentCreate,
-    IncidentUpdate,
     IncidentResponse,
+    IncidentUpdate,
 )
 from app.services.incident_service import IncidentService
 
@@ -30,6 +32,7 @@ router = APIRouter(
 def get_incidents(
     workflow_status: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
     return IncidentService.get_incidents(
         db=db,
@@ -49,6 +52,7 @@ def get_incidents(
 def create_incident(
     incident_data: IncidentCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
     return IncidentService.create_incident(
         db,
@@ -66,6 +70,7 @@ def create_incident(
 def get_correlated_incidents(
     correlation_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
     """
     Return all incidents belonging to the same
@@ -186,6 +191,7 @@ def get_correlated_incidents(
 def get_incident(
     incident_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
     incident = IncidentService.get_incident(
         db,
@@ -213,6 +219,7 @@ def update_incident(
     incident_id: int,
     incident_data: IncidentUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
     incident = IncidentService.update_incident(
         db,
@@ -240,6 +247,7 @@ def update_incident(
 def delete_incident(
     incident_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     deleted = IncidentService.delete_incident(
         db,
@@ -251,3 +259,5 @@ def delete_incident(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Incident not found",
         )
+
+    return None

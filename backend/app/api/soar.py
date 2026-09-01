@@ -1,22 +1,43 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.security import require_admin, require_analyst
 from app.database.session import get_db
-from app.services.soar_service import SOARService
+from app.models.user import User
 from app.schemas.soar_action import (
     SOARActionCreate,
-    SOARActionResponse,
     SOARActionLogResponse,
+    SOARActionResponse,
 )
+from app.services.soar_service import SOARService
+
+
 router = APIRouter(
     prefix="/soar",
     tags=["SOAR"],
 )
 
 
-@router.get("", response_model=list[SOARActionResponse])
-def get_actions(db: Session = Depends(get_db)):
+# =========================================================
+# GET ALL SOAR ACTIONS
+# Analyst + Admin
+# =========================================================
+
+@router.get(
+    "",
+    response_model=list[SOARActionResponse],
+)
+def get_actions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
     return SOARService.get_actions(db)
+
+
+# =========================================================
+# GET SOAR ACTION LOGS
+# Analyst + Admin
+# =========================================================
 
 @router.get(
     "/{action_id}/logs",
@@ -25,6 +46,7 @@ def get_actions(db: Session = Depends(get_db)):
 def get_action_logs(
     action_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
     logs = SOARService.get_action_logs(
         db=db,
@@ -39,9 +61,25 @@ def get_action_logs(
 
     return logs
 
-@router.get("/{action_id}", response_model=SOARActionResponse)
-def get_action(action_id: int, db: Session = Depends(get_db)):
-    action = SOARService.get_action(db, action_id)
+
+# =========================================================
+# GET ONE SOAR ACTION
+# Analyst + Admin
+# =========================================================
+
+@router.get(
+    "/{action_id}",
+    response_model=SOARActionResponse,
+)
+def get_action(
+    action_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    action = SOARService.get_action(
+        db,
+        action_id,
+    )
 
     if not action:
         raise HTTPException(
@@ -52,6 +90,11 @@ def get_action(action_id: int, db: Session = Depends(get_db)):
     return action
 
 
+# =========================================================
+# CREATE / PROPOSE SOAR ACTION
+# Analyst + Admin
+# =========================================================
+
 @router.post(
     "",
     response_model=SOARActionResponse,
@@ -60,8 +103,12 @@ def get_action(action_id: int, db: Session = Depends(get_db)):
 def create_action(
     data: SOARActionCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
 ):
-    action = SOARService.create_action(db, data)
+    action = SOARService.create_action(
+        db,
+        data,
+    )
 
     if not action:
         raise HTTPException(
@@ -72,9 +119,24 @@ def create_action(
     return action
 
 
-@router.post("/{action_id}/approve", response_model=SOARActionResponse)
-def approve_action(action_id: int, db: Session = Depends(get_db)):
-    action = SOARService.approve_action(db, action_id)
+# =========================================================
+# APPROVE SOAR ACTION
+# Admin only
+# =========================================================
+
+@router.post(
+    "/{action_id}/approve",
+    response_model=SOARActionResponse,
+)
+def approve_action(
+    action_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    action = SOARService.approve_action(
+        db,
+        action_id,
+    )
 
     if not action:
         raise HTTPException(
@@ -85,9 +147,24 @@ def approve_action(action_id: int, db: Session = Depends(get_db)):
     return action
 
 
-@router.post("/{action_id}/reject", response_model=SOARActionResponse)
-def reject_action(action_id: int, db: Session = Depends(get_db)):
-    action = SOARService.reject_action(db, action_id)
+# =========================================================
+# REJECT SOAR ACTION
+# Admin only
+# =========================================================
+
+@router.post(
+    "/{action_id}/reject",
+    response_model=SOARActionResponse,
+)
+def reject_action(
+    action_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    action = SOARService.reject_action(
+        db,
+        action_id,
+    )
 
     if not action:
         raise HTTPException(
@@ -98,9 +175,24 @@ def reject_action(action_id: int, db: Session = Depends(get_db)):
     return action
 
 
-@router.post("/{action_id}/execute", response_model=SOARActionResponse)
-def execute_action(action_id: int, db: Session = Depends(get_db)):
-    result = SOARService.execute_action(db, action_id)
+# =========================================================
+# EXECUTE SOAR ACTION
+# Admin only
+# =========================================================
+
+@router.post(
+    "/{action_id}/execute",
+    response_model=SOARActionResponse,
+)
+def execute_action(
+    action_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    result = SOARService.execute_action(
+        db,
+        action_id,
+    )
 
     if result is None:
         raise HTTPException(
@@ -111,7 +203,10 @@ def execute_action(action_id: int, db: Session = Depends(get_db)):
     if result == "approval_required":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Human approval is required before execution",
+            detail=(
+                "Human approval is required "
+                "before execution"
+            ),
         )
 
     return result
