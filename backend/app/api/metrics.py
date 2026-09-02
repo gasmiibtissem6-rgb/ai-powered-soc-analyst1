@@ -21,3 +21,17 @@ def get_soc_metrics(
     return MetricsService.get_global_metrics(
         db
     )
+@router.get(
+    "/severity",
+)
+def get_severity_metrics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """
+    Return incident distribution by severity.
+    """
+
+    return MetricsService.get_severity_distribution(
+        db
+    )

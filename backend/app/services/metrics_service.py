@@ -109,15 +109,9 @@ class MetricsService:
 
         return {
             "reviewed_incidents": reviewed_count,
-            "false_positive_count": (
-                false_positive_count
-            ),
-            "true_positive_count": (
-                true_positive_count
-            ),
-            "false_positive_rate": (
-                false_positive_rate
-            ),
+            "false_positive_count": false_positive_count,
+            "true_positive_count": true_positive_count,
+            "false_positive_rate": false_positive_rate,
         }
 
 
@@ -137,6 +131,7 @@ class MetricsService:
         mttr_values = []
 
         for incident in incidents:
+
             metrics = (
                 MetricsService
                 .calculate_incident_metrics(
@@ -182,21 +177,40 @@ class MetricsService:
         )
 
         return {
-            "total_incidents": len(
-                incidents
-            ),
-            "incidents_with_mttd": len(
-                mttd_values
-            ),
-            "incidents_with_mttr": len(
-                mttr_values
-            ),
-            "average_mttd_seconds": (
-                average_mttd
-            ),
-            "average_mttr_seconds": (
-                average_mttr
-            ),
-
+            "total_incidents": len(incidents),
+            "incidents_with_mttd": len(mttd_values),
+            "incidents_with_mttr": len(mttr_values),
+            "average_mttd_seconds": average_mttd,
+            "average_mttr_seconds": average_mttr,
             **quality_metrics,
         }
+
+
+    @staticmethod
+    def get_severity_distribution(
+        db: Session,
+    ) -> Dict[str, int]:
+        """
+        Count incidents grouped by severity.
+        """
+
+        incidents = db.query(
+            Incident
+        ).all()
+
+        distribution = {
+            "critical": 0,
+            "high": 0,
+            "medium": 0,
+            "low": 0,
+        }
+
+        for incident in incidents:
+            severity = (
+                incident.severity.lower()
+            )
+
+            if severity in distribution:
+                distribution[severity] += 1
+
+        return distribution
