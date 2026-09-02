@@ -78,3 +78,4 @@ sentence-transformers==3.4.1
 banks==2.2.0
 llama-index-vector-stores-qdrant==0.4.3
 llama-index-embeddings-huggingface==0.5.5
+scikit-learn==1.6.1
