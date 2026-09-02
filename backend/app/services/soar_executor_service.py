@@ -2,6 +2,8 @@ import subprocess
 from ipaddress import ip_address
 from typing import Any, Dict
 
+import requests
+
 from app.core.config import settings
 
 
@@ -71,10 +73,6 @@ class SOARExecutorService:
                 "target": normalized_target,
             }
 
-        # -------------------------------------------------
-        # Route action to the correct executor
-        # -------------------------------------------------
-
         if normalized_action == "create_ticket":
             return SOARExecutorService.create_ticket(
                 normalized_target
@@ -139,9 +137,6 @@ class SOARExecutorService:
     ) -> Dict[str, Any]:
         """
         Prototype ticket creation.
-
-        This does not currently connect to an external
-        ticketing platform.
         """
 
         if SOARExecutorService.is_dry_run():
@@ -181,11 +176,6 @@ class SOARExecutorService:
     ) -> Dict[str, Any]:
         """
         Prepare execution of an IP blocking action.
-
-        Real firewall modification is protected by:
-        1. IP validation
-        2. dry-run mode
-        3. SOAR_ENABLE_BLOCK_IP feature flag
         """
 
         if not SOARExecutorService.is_safe_ip(
@@ -204,10 +194,6 @@ class SOARExecutorService:
                 ),
             }
 
-        # -------------------------------------------------
-        # Dry-run always wins
-        # -------------------------------------------------
-
         if SOARExecutorService.is_dry_run():
             return {
                 "success": True,
@@ -222,10 +208,6 @@ class SOARExecutorService:
                 ),
             }
 
-        # -------------------------------------------------
-        # Real IP blocking disabled
-        # -------------------------------------------------
-
         if not settings.SOAR_ENABLE_BLOCK_IP:
             return {
                 "success": False,
@@ -239,10 +221,6 @@ class SOARExecutorService:
                     "SOAR_ENABLE_BLOCK_IP."
                 ),
             }
-
-        # -------------------------------------------------
-        # Real execution intentionally not activated yet
-        # -------------------------------------------------
 
         return {
             "success": False,
@@ -268,9 +246,6 @@ class SOARExecutorService:
     ) -> Dict[str, Any]:
         """
         Prepare endpoint isolation.
-
-        Real endpoint isolation requires an external EDR,
-        Wazuh Active Response, or another security adapter.
         """
 
         if not SOARExecutorService.is_safe_endpoint(
@@ -341,12 +316,6 @@ class SOARExecutorService:
     ) -> Dict[str, Any]:
         """
         Prepare disabling a user account.
-
-        The target is expected to be a user identifier
-        such as an email address or username.
-
-        Real account disabling requires an external
-        identity provider or directory adapter.
         """
 
         if not SOARExecutorService.is_safe_user(
@@ -447,13 +416,13 @@ class SOARExecutorService:
         target: str,
     ) -> Dict[str, Any]:
         """
-        Prepare a SOC notification.
+        Send a SOC notification to Slack or Microsoft Teams.
 
-        The target may represent a SOC team, channel,
-        or future Slack/Teams destination.
-
-        Real external notification delivery remains
-        disabled until a notification adapter is configured.
+        Real external delivery is protected by:
+        1. notification target validation
+        2. dry-run mode
+        3. SOAR_ENABLE_SEND_NOTIFICATION feature flag
+        4. configured Slack/Teams webhook
         """
 
         if not SOARExecutorService.is_safe_notification_target(
@@ -472,6 +441,10 @@ class SOARExecutorService:
                 ),
             }
 
+        # =====================================================
+        # DRY RUN
+        # =====================================================
+
         if SOARExecutorService.is_dry_run():
             return {
                 "success": True,
@@ -485,6 +458,10 @@ class SOARExecutorService:
                     f"{target} simulated successfully."
                 ),
             }
+
+        # =====================================================
+        # FEATURE FLAG
+        # =====================================================
 
         if not settings.SOAR_ENABLE_SEND_NOTIFICATION:
             return {
@@ -500,17 +477,112 @@ class SOARExecutorService:
                 ),
             }
 
+        # =====================================================
+        # SELECT PROVIDER
+        # =====================================================
+
+        normalized_target = target.strip().lower()
+
+        webhook_url = ""
+        provider = ""
+
+        if "slack" in normalized_target:
+            webhook_url = settings.SLACK_WEBHOOK_URL
+            provider = "slack"
+
+        elif "teams" in normalized_target:
+            webhook_url = settings.TEAMS_WEBHOOK_URL
+            provider = "teams"
+
+        else:
+            configured_webhooks = []
+
+            if settings.SLACK_WEBHOOK_URL:
+                configured_webhooks.append(
+                    (
+                        "slack",
+                        settings.SLACK_WEBHOOK_URL,
+                    )
+                )
+
+            if settings.TEAMS_WEBHOOK_URL:
+                configured_webhooks.append(
+                    (
+                        "teams",
+                        settings.TEAMS_WEBHOOK_URL,
+                    )
+                )
+
+            if len(configured_webhooks) == 1:
+                provider, webhook_url = (
+                    configured_webhooks[0]
+                )
+
+        if not webhook_url:
+            return {
+                "success": False,
+                "executed": False,
+                "simulated": False,
+                "mode": settings.SOAR_EXECUTION_MODE,
+                "action_type": "send_notification",
+                "target": target,
+                "message": (
+                    "No Slack or Teams webhook is configured "
+                    "for the requested notification target."
+                ),
+            }
+
+        # =====================================================
+        # PAYLOAD
+        # =====================================================
+
+        payload = {
+            "text": (
+                "AI-Powered SOC Analyst notification\n"
+                f"Target: {target}\n"
+                "A SOC response action requires attention."
+            )
+        }
+
+        # =====================================================
+        # SEND WEBHOOK
+        # =====================================================
+
+        try:
+            response = requests.post(
+                webhook_url,
+                json=payload,
+                timeout=10,
+            )
+
+            response.raise_for_status()
+
+        except requests.RequestException as exc:
+            return {
+                "success": False,
+                "executed": False,
+                "simulated": False,
+                "mode": settings.SOAR_EXECUTION_MODE,
+                "action_type": "send_notification",
+                "target": target,
+                "provider": provider,
+                "message": (
+                    "External SOC notification failed: "
+                    f"{exc}"
+                ),
+            }
+
         return {
-            "success": False,
-            "executed": False,
+            "success": True,
+            "executed": True,
             "simulated": False,
             "mode": settings.SOAR_EXECUTION_MODE,
             "action_type": "send_notification",
             "target": target,
+            "provider": provider,
             "message": (
-                "Notifications are enabled in configuration "
-                "but no production Slack/Teams notification "
-                "adapter has been configured yet."
+                f"SOC notification delivered successfully "
+                f"through {provider}."
             ),
         }
 

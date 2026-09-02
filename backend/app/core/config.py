@@ -50,6 +50,9 @@ class Settings(BaseSettings):
 
     SOAR_ENABLE_SEND_NOTIFICATION: bool = False
 
+    SLACK_WEBHOOK_URL: str = ""
+    TEAMS_WEBHOOK_URL: str = ""
+
 
     # =====================================================
     # PYDANTIC SETTINGS
