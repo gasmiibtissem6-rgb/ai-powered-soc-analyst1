@@ -75,7 +75,10 @@ class DatasetAdapter:
                 f"Dataset not found: {dataset_path}"
             )
 
-        df = pd.read_csv(dataset_path)
+        df = pd.read_csv(
+    dataset_path,
+    low_memory=False,
+)
 
         df.columns = (
             df.columns
