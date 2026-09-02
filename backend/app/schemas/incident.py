@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -10,6 +10,13 @@ class IncidentBase(BaseModel):
 
     severity: str = "medium"
     status: str = "open"
+
+    disposition: Literal[
+        "unknown",
+        "true_positive",
+        "false_positive",
+        "benign",
+    ] = "unknown"
 
     source: Optional[str] = None
 
@@ -35,6 +42,15 @@ class IncidentUpdate(BaseModel):
 
     severity: Optional[str] = None
     status: Optional[str] = None
+
+    disposition: Optional[
+        Literal[
+            "unknown",
+            "true_positive",
+            "false_positive",
+            "benign",
+        ]
+    ] = None
 
     source: Optional[str] = None
 

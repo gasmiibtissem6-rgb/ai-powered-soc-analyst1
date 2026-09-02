@@ -37,6 +37,16 @@ class Incident(Base):
         nullable=False,
     )
 
+    # --------------------------------------------------
+    # SOC analyst disposition
+    # --------------------------------------------------
+
+    disposition: Mapped[str] = mapped_column(
+        String(50),
+        default="unknown",
+        nullable=False,
+    )
+
     source: Mapped[Optional[str]] = mapped_column(
         String(100),
         nullable=True,
@@ -89,6 +99,7 @@ class Incident(Base):
     # --------------------------------------------------
     # Correlation
     # --------------------------------------------------
+
     correlation_id: Mapped[Optional[str]] = mapped_column(
         String(100),
         nullable=True,

@@ -60,13 +60,73 @@ class MetricsService:
             "mttr_seconds": mttr_seconds,
         }
 
+
+    @staticmethod
+    def calculate_quality_metrics(
+        incidents: list[Incident],
+    ) -> Dict[str, Optional[float]]:
+        """
+        Calculate SOC analyst classification metrics.
+
+        False Positive Rate:
+            false positives / reviewed incidents * 100
+
+        Unknown incidents are ignored because
+        they were not reviewed yet.
+        """
+
+        reviewed_incidents = [
+            incident
+            for incident in incidents
+            if incident.disposition != "unknown"
+        ]
+
+        false_positive_count = sum(
+            1
+            for incident in reviewed_incidents
+            if incident.disposition == "false_positive"
+        )
+
+        true_positive_count = sum(
+            1
+            for incident in reviewed_incidents
+            if incident.disposition == "true_positive"
+        )
+
+        reviewed_count = len(
+            reviewed_incidents
+        )
+
+        false_positive_rate = (
+            (
+                false_positive_count
+                / reviewed_count
+            )
+            * 100
+            if reviewed_count
+            else None
+        )
+
+        return {
+            "reviewed_incidents": reviewed_count,
+            "false_positive_count": (
+                false_positive_count
+            ),
+            "true_positive_count": (
+                true_positive_count
+            ),
+            "false_positive_rate": (
+                false_positive_rate
+            ),
+        }
+
+
     @staticmethod
     def get_global_metrics(
         db: Session,
     ) -> Dict[str, Optional[float]]:
         """
-        Calculate average MTTD and MTTR
-        across incidents with valid timestamps.
+        Calculate global SOC operational metrics.
         """
 
         incidents = db.query(
@@ -114,6 +174,13 @@ class MetricsService:
             else None
         )
 
+        quality_metrics = (
+            MetricsService
+            .calculate_quality_metrics(
+                incidents
+            )
+        )
+
         return {
             "total_incidents": len(
                 incidents
@@ -130,4 +197,6 @@ class MetricsService:
             "average_mttr_seconds": (
                 average_mttr
             ),
+
+            **quality_metrics,
         }

@@ -1,6 +1,8 @@
 from datetime import datetime
 from unittest.mock import MagicMock
 
+import pytest
+
 from app.models.incident import Incident
 from app.services.metrics_service import MetricsService
 
@@ -89,6 +91,7 @@ def test_global_metrics():
         severity="high",
         status="resolved",
         source="wazuh",
+        disposition="true_positive",
         event_timestamp=datetime(
             2026, 9, 2, 10, 0, 0
         ),
@@ -105,6 +108,7 @@ def test_global_metrics():
         severity="high",
         status="resolved",
         source="suricata",
+        disposition="false_positive",
         event_timestamp=datetime(
             2026, 9, 2, 11, 0, 0
         ),
@@ -140,3 +144,87 @@ def test_global_metrics():
         metrics["average_mttr_seconds"]
         == 120.0
     )
+
+    assert metrics["reviewed_incidents"] == 2
+    assert metrics["true_positive_count"] == 1
+    assert metrics["false_positive_count"] == 1
+
+    assert metrics[
+        "false_positive_rate"
+    ] == pytest.approx(
+        50.0
+    )
+
+
+def test_false_positive_rate():
+    incidents = [
+        Incident(
+            title="True Positive 1",
+            severity="high",
+            status="resolved",
+            source="test",
+            disposition="true_positive",
+        ),
+        Incident(
+            title="True Positive 2",
+            severity="high",
+            status="resolved",
+            source="test",
+            disposition="true_positive",
+        ),
+        Incident(
+            title="False Positive",
+            severity="low",
+            status="resolved",
+            source="test",
+            disposition="false_positive",
+        ),
+        Incident(
+            title="Not Reviewed",
+            severity="medium",
+            status="open",
+            source="test",
+            disposition="unknown",
+        ),
+    ]
+
+    metrics = (
+        MetricsService
+        .calculate_quality_metrics(
+            incidents
+        )
+    )
+
+    assert metrics["reviewed_incidents"] == 3
+    assert metrics["true_positive_count"] == 2
+    assert metrics["false_positive_count"] == 1
+
+    assert metrics[
+        "false_positive_rate"
+    ] == pytest.approx(
+        100 / 3
+    )
+
+
+def test_false_positive_rate_without_reviews():
+    incidents = [
+        Incident(
+            title="Unknown Incident",
+            severity="medium",
+            status="open",
+            source="test",
+            disposition="unknown",
+        ),
+    ]
+
+    metrics = (
+        MetricsService
+        .calculate_quality_metrics(
+            incidents
+        )
+    )
+
+    assert metrics["reviewed_incidents"] == 0
+    assert metrics["false_positive_count"] == 0
+    assert metrics["true_positive_count"] == 0
+    assert metrics["false_positive_rate"] is None
