@@ -14,7 +14,7 @@ from app.api import suricata
 from app.api import metrics
 import asyncio
 from contextlib import asynccontextmanager
-
+from app.api import analyst
 from fastapi import FastAPI
 
 from app.services.workflow_retry_service import workflow_retry_loop
@@ -58,8 +58,10 @@ app.include_router(agents.router)
 app.include_router(wazuh.router)
 app.include_router(suricata.router)
 app.include_router(metrics.router)
+app.include_router(analyst.router)
 # SOC Reports
 app.include_router(reports.router)
+
 
 
 # =========================================================

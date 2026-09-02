@@ -71,3 +71,40 @@ def test_metrics_route_requires_analyst():
         "require_analyst"
         in dependency_names
     )
+def test_analyst_ask_route_is_registered():
+    paths = get_registered_paths()
+
+    assert "/analyst/ask" in paths
+
+
+def test_analyst_ask_route_requires_analyst():
+    analyst_ask_route = next(
+        route
+        for route in app.routes
+        if getattr(
+            route,
+            "path",
+            None,
+        ) == "/analyst/ask"
+        and "POST" in getattr(
+            route,
+            "methods",
+            set(),
+        )
+    )
+
+    dependency_names = {
+        dependency.call.__name__
+        for dependency
+        in analyst_ask_route.dependant.dependencies
+        if getattr(
+            dependency,
+            "call",
+            None,
+        ) is not None
+    }
+
+    assert (
+        "require_analyst"
+        in dependency_names
+    )
