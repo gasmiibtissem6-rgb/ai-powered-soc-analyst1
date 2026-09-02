@@ -22,6 +22,8 @@ class IncidentBase(BaseModel):
 
     correlation_id: Optional[str] = None
 
+    event_timestamp: Optional[datetime] = None
+
 
 class IncidentCreate(IncidentBase):
     pass
@@ -44,10 +46,14 @@ class IncidentUpdate(BaseModel):
     assigned_to: Optional[str] = None
 
     correlation_id: Optional[str] = None
+    event_timestamp: Optional[datetime] = None
 
 
 class IncidentResponse(IncidentBase):
     id: int
+
+    detected_at: datetime
+    resolved_at: Optional[datetime] = None
     created_at: datetime
 
     workflow_status: str

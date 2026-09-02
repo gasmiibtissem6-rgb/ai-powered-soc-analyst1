@@ -7,7 +7,7 @@ from app.schemas.incident import (
     IncidentCreate,
     IncidentUpdate,
 )
-
+from datetime import datetime
 
 class IncidentService:
 
@@ -78,6 +78,30 @@ class IncidentService:
         update_data = incident_data.model_dump(
             exclude_unset=True
         )
+
+        new_status = update_data.get(
+            "status"
+        )
+
+        if (
+            new_status in {
+                "resolved",
+                "closed",
+            }
+            and incident.resolved_at is None
+        ):
+            incident.resolved_at = (
+                datetime.utcnow()
+            )
+
+        elif (
+            new_status
+            and new_status not in {
+                "resolved",
+                "closed",
+            }
+        ):
+            incident.resolved_at = None
 
         for key, value in update_data.items():
             setattr(

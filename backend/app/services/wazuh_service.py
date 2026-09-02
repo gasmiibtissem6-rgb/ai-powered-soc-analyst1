@@ -1,4 +1,5 @@
 import re
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy.orm import Session
@@ -41,6 +42,56 @@ class WazuhService:
 
         return matches[-1]
 
+    @staticmethod
+    def _parse_event_timestamp(
+        value: Optional[str],
+    ) -> Optional[datetime]:
+        """
+        Parse an ISO 8601 timestamp received from Wazuh.
+
+        Supported examples:
+        2025-02-04T14:25:34.416117Z
+        2022-02-07T00:00:00+00:00
+
+        The database currently uses SQLAlchemy DateTime
+        without timezone=True, so the value is normalized
+        to UTC and stored as a naive UTC datetime.
+        """
+
+        if not value:
+            return None
+
+        try:
+            timestamp = str(value).strip()
+
+            if timestamp.endswith("Z"):
+                timestamp = (
+                    timestamp[:-1]
+                    + "+00:00"
+                )
+
+            parsed = datetime.fromisoformat(
+                timestamp
+            )
+
+            if parsed.tzinfo is not None:
+                parsed = (
+                    parsed.astimezone(
+                        timezone.utc
+                    )
+                    .replace(
+                        tzinfo=None
+                    )
+                )
+
+            return parsed
+
+        except (
+            TypeError,
+            ValueError,
+        ):
+            return None
+
     # =====================================================
     # NORMALIZE ALERT
     # =====================================================
@@ -49,13 +100,13 @@ class WazuhService:
         self,
         alert: dict[str, Any],
     ) -> dict[str, Any]:
+        """
+        Normalize a Wazuh alert.
 
-        # --------------------------------------------------
-        # Support both formats:
-        #
-        # 1. Direct Wazuh alert
-        # 2. OpenSearch document with _source
-        # --------------------------------------------------
+        Supports:
+        1. Direct Wazuh alert
+        2. OpenSearch document containing _source
+        """
 
         source = alert.get("_source")
 
@@ -64,25 +115,37 @@ class WazuhService:
         else:
             alert_data = alert
 
-        rule = alert_data.get(
-            "rule",
-            {},
-        ) or {}
+        rule = (
+            alert_data.get(
+                "rule",
+                {},
+            )
+            or {}
+        )
 
-        agent = alert_data.get(
-            "agent",
-            {},
-        ) or {}
+        agent = (
+            alert_data.get(
+                "agent",
+                {},
+            )
+            or {}
+        )
 
-        data = alert_data.get(
-            "data",
-            {},
-        ) or {}
+        data = (
+            alert_data.get(
+                "data",
+                {},
+            )
+            or {}
+        )
 
-        predecoder = alert_data.get(
-            "predecoder",
-            {},
-        ) or {}
+        predecoder = (
+            alert_data.get(
+                "predecoder",
+                {},
+            )
+            or {}
+        )
 
         full_log = str(
             alert_data.get(
@@ -120,10 +183,6 @@ class WazuhService:
 
         # --------------------------------------------------
         # Nmap custom Wazuh rule
-        #
-        # The scan is executed by the Wazuh manager host.
-        # agent.ip may not exist for agent 000, so use
-        # known fields when available.
         # --------------------------------------------------
 
         if (
@@ -143,7 +202,9 @@ class WazuhService:
         destination_ip = (
             data.get("dstip")
             or data.get("dst_ip")
-            or data.get("destination_ip")
+            or data.get(
+                "destination_ip"
+            )
         )
 
         # --------------------------------------------------
@@ -154,7 +215,6 @@ class WazuhService:
             not destination_ip
             and rule_id == "100100"
         ):
-
             destination_ip = (
                 self._extract_ipv4_from_text(
                     command
@@ -174,19 +234,13 @@ class WazuhService:
             and not source_ip
             and agent.get("id") == "000"
         ):
-            """
-            Wazuh agent 000 is the manager itself.
-
-            In our lab, the manager is the machine that
-            launches the Nmap scan.
-
-            If its IP is absent from the alert, infer it
-            from the known scan topology when destination
-            information is available.
-            """
-
-            if destination_ip == "192.168.66.149":
-                source_ip = "192.168.66.144"
+            if (
+                destination_ip
+                == "192.168.66.149"
+            ):
+                source_ip = (
+                    "192.168.66.144"
+                )
 
         # ==================================================
         # USERNAME
@@ -206,7 +260,9 @@ class WazuhService:
         hostname = (
             agent.get("name")
             or data.get("hostname")
-            or predecoder.get("hostname")
+            or predecoder.get(
+                "hostname"
+            )
         )
 
         # ==================================================
@@ -247,8 +303,12 @@ class WazuhService:
         # ==================================================
 
         description = (
-            alert_data.get("full_log")
-            or alert_data.get("message")
+            alert_data.get(
+                "full_log"
+            )
+            or alert_data.get(
+                "message"
+            )
             or title
         )
 
@@ -256,10 +316,13 @@ class WazuhService:
         # MITRE ATT&CK
         # ==================================================
 
-        mitre = rule.get(
-            "mitre",
-            {},
-        ) or {}
+        mitre = (
+            rule.get(
+                "mitre",
+                {},
+            )
+            or {}
+        )
 
         mitre_ids = (
             mitre.get(
@@ -286,6 +349,22 @@ class WazuhService:
         )
 
         # ==================================================
+        # EVENT TIMESTAMP
+        # ==================================================
+
+        raw_timestamp = (
+            alert_data.get(
+                "timestamp"
+            )
+        )
+
+        event_timestamp = (
+            self._parse_event_timestamp(
+                raw_timestamp
+            )
+        )
+
+        # ==================================================
         # NORMALIZED RESPONSE
         # ==================================================
 
@@ -295,9 +374,15 @@ class WazuhService:
             "severity": severity,
             "source": "Wazuh",
 
+            "event_timestamp": (
+                event_timestamp
+            ),
+
             "hostname": hostname,
             "source_ip": source_ip,
-            "destination_ip": destination_ip,
+            "destination_ip": (
+                destination_ip
+            ),
             "username": username,
 
             "wazuh_rule_id": (
@@ -332,10 +417,9 @@ class WazuhService:
                 mitre_tactics
             ),
 
+            # Keep raw timestamp for traceability.
             "timestamp": (
-                alert_data.get(
-                    "timestamp"
-                )
+                raw_timestamp
             ),
 
             "command": command,
@@ -372,8 +456,10 @@ class WazuhService:
         alert: dict[str, Any],
     ) -> dict[str, Any]:
 
-        normalized = self.normalize_alert(
-            alert
+        normalized = (
+            self.normalize_alert(
+                alert
+            )
         )
 
         return {
@@ -397,6 +483,12 @@ class WazuhService:
             ),
 
             "source": "Wazuh",
+
+            "event_timestamp": (
+                normalized.get(
+                    "event_timestamp"
+                )
+            ),
 
             "hostname": (
                 normalized.get(
@@ -443,8 +535,10 @@ class WazuhService:
             )
         )
 
-        incident_create = IncidentCreate(
-            **incident_data
+        incident_create = (
+            IncidentCreate(
+                **incident_data
+            )
         )
 
         incident = (

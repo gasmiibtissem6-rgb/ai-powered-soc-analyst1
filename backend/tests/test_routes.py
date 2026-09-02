@@ -39,3 +39,35 @@ def test_register_route_requires_admin():
     }
 
     assert "require_admin" in dependency_names
+
+def test_metrics_route_requires_analyst():
+    metrics_route = next(
+        route
+        for route in app.routes
+        if getattr(
+            route,
+            "path",
+            None,
+        ) == "/metrics"
+        and "GET" in getattr(
+            route,
+            "methods",
+            set(),
+        )
+    )
+
+    dependency_names = {
+        dependency.call.__name__
+        for dependency
+        in metrics_route.dependant.dependencies
+        if getattr(
+            dependency,
+            "call",
+            None,
+        ) is not None
+    }
+
+    assert (
+        "require_analyst"
+        in dependency_names
+    )

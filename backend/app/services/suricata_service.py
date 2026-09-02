@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 from sqlalchemy.orm import Session
 
 from app.models.incident import Incident
+from app.utils.datetime_utils import parse_iso8601_utc
 
 
 class SuricataService:
@@ -21,6 +22,14 @@ class SuricataService:
 
         event_type = alert.get(
             "event_type"
+        )
+
+        raw_timestamp = alert.get(
+            "timestamp"
+        )
+
+        event_timestamp = parse_iso8601_utc(
+            raw_timestamp
         )
 
         if event_type != "alert":
@@ -150,6 +159,11 @@ class SuricataService:
             "severity": severity,
             "status": "open",
             "source": "Suricata",
+
+            "event_timestamp": (
+                event_timestamp
+            ),
+
             "hostname": None,
             "source_ip": source_ip,
             "destination_ip": (
@@ -181,10 +195,9 @@ class SuricataService:
         Convert Suricata numeric severity
         into the platform severity levels.
 
-        Suricata commonly uses:
-        1 = highest severity
-        2 = medium/high
-        3 = lower severity
+        1 = critical
+        2 = high
+        3 = medium
         """
 
         if severity_number == 1:
@@ -204,8 +217,8 @@ class SuricataService:
         alert: Dict[str, Any],
     ) -> Incident:
         """
-        Normalize a Suricata alert and
-        persist it as an Incident.
+        Normalize a Suricata alert
+        and persist it as an Incident.
         """
 
         normalized = (
@@ -230,6 +243,11 @@ class SuricataService:
             source=normalized[
                 "source"
             ],
+
+            event_timestamp=normalized[
+                "event_timestamp"
+            ],
+
             hostname=normalized[
                 "hostname"
             ],
@@ -242,6 +260,7 @@ class SuricataService:
             username=normalized[
                 "username"
             ],
+
             workflow_status="pending",
             workflow_error=None,
         )

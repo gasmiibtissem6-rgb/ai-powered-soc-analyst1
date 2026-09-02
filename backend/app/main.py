@@ -11,6 +11,7 @@ from app.api import agents
 from app.api import reports
 from app.api import soar
 from app.api import suricata
+from app.api import metrics
 import asyncio
 from contextlib import asynccontextmanager
 
@@ -56,6 +57,7 @@ app.include_router(mitre.router)
 app.include_router(agents.router)
 app.include_router(wazuh.router)
 app.include_router(suricata.router)
+app.include_router(metrics.router)
 # SOC Reports
 app.include_router(reports.router)
 

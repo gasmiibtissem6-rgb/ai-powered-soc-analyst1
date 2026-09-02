@@ -89,11 +89,30 @@ class Incident(Base):
     # --------------------------------------------------
     # Correlation
     # --------------------------------------------------
-
     correlation_id: Mapped[Optional[str]] = mapped_column(
         String(100),
         nullable=True,
         index=True,
+    )
+
+    # --------------------------------------------------
+    # SOC operational metrics
+    # --------------------------------------------------
+
+    event_timestamp: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+    )
+
+    detected_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
