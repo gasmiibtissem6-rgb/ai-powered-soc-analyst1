@@ -35,3 +35,84 @@ def get_severity_metrics(
     return MetricsService.get_severity_distribution(
         db
     )
+
+@router.get(
+    "/dashboard",
+)
+def get_dashboard_metrics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """
+    Return complete SOC dashboard metrics.
+
+    Includes:
+    - operational metrics (MTTD / MTTR)
+    - quality metrics
+    - severity distribution
+    """
+
+    global_metrics = (
+        MetricsService
+        .get_global_metrics(db)
+    )
+
+    severity_distribution = (
+        MetricsService
+        .get_severity_distribution(db)
+    )
+
+    return {
+        "operational": {
+            "total_incidents": (
+                global_metrics[
+                    "total_incidents"
+                ]
+            ),
+            "incidents_with_mttd": (
+                global_metrics[
+                    "incidents_with_mttd"
+                ]
+            ),
+            "incidents_with_mttr": (
+                global_metrics[
+                    "incidents_with_mttr"
+                ]
+            ),
+            "average_mttd_seconds": (
+                global_metrics[
+                    "average_mttd_seconds"
+                ]
+            ),
+            "average_mttr_seconds": (
+                global_metrics[
+                    "average_mttr_seconds"
+                ]
+            ),
+        },
+
+        "quality": {
+            "reviewed_incidents": (
+                global_metrics[
+                    "reviewed_incidents"
+                ]
+            ),
+            "true_positive_count": (
+                global_metrics[
+                    "true_positive_count"
+                ]
+            ),
+            "false_positive_count": (
+                global_metrics[
+                    "false_positive_count"
+                ]
+            ),
+            "false_positive_rate": (
+                global_metrics[
+                    "false_positive_rate"
+                ]
+            ),
+        },
+
+        "severity": severity_distribution,
+    }
