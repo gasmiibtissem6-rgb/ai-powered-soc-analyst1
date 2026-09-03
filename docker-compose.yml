@@ -5,9 +5,9 @@ services:
     restart: unless-stopped
 
     environment:
-      POSTGRES_DB: soc_db
-      POSTGRES_USER: soc_admin
-      POSTGRES_PASSWORD: soc_password
+       POSTGRES_DB: ${POSTGRES_DB}
+       POSTGRES_USER: ${POSTGRES_USER}
+       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
 
     ports:
       - "5432:5432"
@@ -52,7 +52,7 @@ services:
       - ./backend/.env
 
     environment:
-      DATABASE_URL: postgresql://soc_admin:soc_password@postgres:5432/soc_db
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
 
     ports:

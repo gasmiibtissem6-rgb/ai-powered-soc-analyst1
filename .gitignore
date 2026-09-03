@@ -24,3 +24,6 @@ data/qdrant_rag_metadata.json
 infrastructure/traefik/certs/*.key
 infrastructure/traefik/certs/*.crt
 infrastructure/traefik/certs/*.crt
+
+# Docker Compose local secrets
+.env
