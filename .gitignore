@@ -3,7 +3,7 @@ venv/
 __pycache__/
 *.pyc
 
-# Environment variables
+# Environment variables / secrets
 .env
 
 # IDE
@@ -17,13 +17,8 @@ data/
 .DS_Store
 
 # Local Qdrant RAG storage
-data/qdrant_storage/
-data/qdrant_rag_metadata.json
+backend/data/qdrant_storage/
 
 # Local TLS certificates / private keys
 infrastructure/traefik/certs/*.key
 infrastructure/traefik/certs/*.crt
-infrastructure/traefik/certs/*.crt
-
-# Docker Compose local secrets
-.env
