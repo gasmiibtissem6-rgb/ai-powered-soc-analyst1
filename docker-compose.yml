@@ -61,6 +61,22 @@ services:
     volumes:
       - ./backend:/app
 
+    labels:
+      - "traefik.enable=true"
+
+      - "traefik.http.routers.soc-api.rule=Host(`soc.local`)"
+      - "traefik.http.routers.soc-api.entrypoints=websecure"
+      - "traefik.http.routers.soc-api.tls=true"
+
+      - "traefik.http.services.soc-api.loadbalancer.server.port=8000"
+
+      - "traefik.http.routers.soc-api-http.rule=Host(`soc.local`)"
+      - "traefik.http.routers.soc-api-http.entrypoints=web"
+      - "traefik.http.routers.soc-api-http.middlewares=https-redirect"
+
+      - "traefik.http.middlewares.https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.https-redirect.redirectscheme.permanent=true"
+
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,6 +116,24 @@ services:
 
     depends_on:
       - prometheus
+
+  traefik:
+    image: traefik:v3.6
+    container_name: soc-traefik
+    restart: unless-stopped
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./infrastructure/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./infrastructure/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ./infrastructure/traefik/certs:/certs:ro
+
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:

@@ -19,3 +19,8 @@ data/
 # Local Qdrant RAG storage
 data/qdrant_storage/
 data/qdrant_rag_metadata.json
+
+# Local TLS certificates / private keys
+infrastructure/traefik/certs/*.key
+infrastructure/traefik/certs/*.crt
+infrastructure/traefik/certs/*.crt
