@@ -80,3 +80,4 @@ llama-index-vector-stores-qdrant==0.4.3
 llama-index-embeddings-huggingface==0.5.5
 scikit-learn==1.6.1
 prometheus-client==0.22.1
+redis==6.4.0

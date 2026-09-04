@@ -9,14 +9,16 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-        # Machine-to-machine ingestion authentication
+
+    # Machine-to-machine ingestion authentication
     SOC_INGESTION_API_KEY: str
 
     # =====================================================
-    # DATABASE
+    # DATABASE / CACHE
     # =====================================================
 
     DATABASE_URL: str
+    REDIS_URL: str = "redis://localhost:6379/0"
 
     # =====================================================
     # LLM
@@ -33,9 +35,11 @@ class Settings(BaseSettings):
     ABUSEIPDB_API_KEY: str
     VIRUSTOTAL_API_KEY: str = ""
     OTX_API_KEY: str = ""
+
     MISP_URL: str = ""
     MISP_API_KEY: str = ""
     MISP_VERIFY_SSL: bool = True
+
     # =====================================================
     # SOAR EXECUTION
     # =====================================================
@@ -43,16 +47,12 @@ class Settings(BaseSettings):
     SOAR_EXECUTION_MODE: str = "dry_run"
 
     SOAR_ENABLE_BLOCK_IP: bool = False
-
     SOAR_ENABLE_ISOLATE_ENDPOINT: bool = False
-
     SOAR_ENABLE_DISABLE_USER: bool = False
-
     SOAR_ENABLE_SEND_NOTIFICATION: bool = False
 
     SLACK_WEBHOOK_URL: str = ""
     TEAMS_WEBHOOK_URL: str = ""
-
 
     # =====================================================
     # PYDANTIC SETTINGS
