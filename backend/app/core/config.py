@@ -55,6 +55,15 @@ class Settings(BaseSettings):
     TEAMS_WEBHOOK_URL: str = ""
 
     # =====================================================
+    # VAULT / SECRET MANAGEMENT
+    # =====================================================
+
+    VAULT_ADDR: str = ""
+    VAULT_TOKEN: str = ""
+    VAULT_MOUNT_POINT: str = "secret"
+    VAULT_SECRET_PATH: str = "soc-backend"
+
+    # =====================================================
     # PYDANTIC SETTINGS
     # =====================================================
 
