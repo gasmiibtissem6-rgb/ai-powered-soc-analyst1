@@ -1,7 +1,7 @@
 import requests
 
 from app.core.config import settings
-
+from app.core.secrets import secret_manager
 
 class MISPService:
     """
@@ -24,7 +24,7 @@ class MISPService:
             else ""
         )
 
-        self.api_key = settings.MISP_API_KEY
+        self.api_key = secret_manager.get("MISP_API_KEY")
         self.verify_ssl = settings.MISP_VERIFY_SSL
 
         self.headers = {

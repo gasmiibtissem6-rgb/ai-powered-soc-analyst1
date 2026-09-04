@@ -5,13 +5,13 @@ from typing import Optional
 from openai import OpenAI, RateLimitError
 
 from app.core.config import settings
-
+from app.core.secrets import secret_manager
 
 class LLMService:
 
     def __init__(self):
         self.client = OpenAI(
-            api_key=settings.GROQ_API_KEY,
+            api_key=secret_manager.get("GROQ_API_KEY"),
             base_url=settings.LLM_BASE_URL,
         )
 

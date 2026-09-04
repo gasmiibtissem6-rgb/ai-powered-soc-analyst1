@@ -1,10 +1,10 @@
-import subprocess
 from ipaddress import ip_address
 from typing import Any, Dict
 
 import requests
 
 from app.core.config import settings
+from app.core.secrets import secret_manager
 
 
 class SOARExecutorService:
@@ -178,9 +178,7 @@ class SOARExecutorService:
         Prepare execution of an IP blocking action.
         """
 
-        if not SOARExecutorService.is_safe_ip(
-            target
-        ):
+        if not SOARExecutorService.is_safe_ip(target):
             return {
                 "success": False,
                 "executed": False,
@@ -248,9 +246,7 @@ class SOARExecutorService:
         Prepare endpoint isolation.
         """
 
-        if not SOARExecutorService.is_safe_endpoint(
-            target
-        ):
+        if not SOARExecutorService.is_safe_endpoint(target):
             return {
                 "success": False,
                 "executed": False,
@@ -318,9 +314,7 @@ class SOARExecutorService:
         Prepare disabling a user account.
         """
 
-        if not SOARExecutorService.is_safe_user(
-            target
-        ):
+        if not SOARExecutorService.is_safe_user(target):
             return {
                 "success": False,
                 "executed": False,
@@ -425,9 +419,7 @@ class SOARExecutorService:
         4. configured Slack/Teams webhook
         """
 
-        if not SOARExecutorService.is_safe_notification_target(
-            target
-        ):
+        if not SOARExecutorService.is_safe_notification_target(target):
             return {
                 "success": False,
                 "executed": False,
@@ -441,9 +433,9 @@ class SOARExecutorService:
                 ),
             }
 
-        # =====================================================
+        # =================================================
         # DRY RUN
-        # =====================================================
+        # =================================================
 
         if SOARExecutorService.is_dry_run():
             return {
@@ -459,9 +451,9 @@ class SOARExecutorService:
                 ),
             }
 
-        # =====================================================
+        # =================================================
         # FEATURE FLAG
-        # =====================================================
+        # =================================================
 
         if not settings.SOAR_ENABLE_SEND_NOTIFICATION:
             return {
@@ -477,46 +469,54 @@ class SOARExecutorService:
                 ),
             }
 
-        # =====================================================
+        # =================================================
         # SELECT PROVIDER
-        # =====================================================
+        # =================================================
 
         normalized_target = target.strip().lower()
+
+        slack_webhook_url = secret_manager.get(
+            "SLACK_WEBHOOK_URL",
+            "",
+        )
+
+        teams_webhook_url = secret_manager.get(
+            "TEAMS_WEBHOOK_URL",
+            "",
+        )
 
         webhook_url = ""
         provider = ""
 
         if "slack" in normalized_target:
-            webhook_url = settings.SLACK_WEBHOOK_URL
+            webhook_url = slack_webhook_url
             provider = "slack"
 
         elif "teams" in normalized_target:
-            webhook_url = settings.TEAMS_WEBHOOK_URL
+            webhook_url = teams_webhook_url
             provider = "teams"
 
         else:
             configured_webhooks = []
 
-            if settings.SLACK_WEBHOOK_URL:
+            if slack_webhook_url:
                 configured_webhooks.append(
                     (
                         "slack",
-                        settings.SLACK_WEBHOOK_URL,
+                        slack_webhook_url,
                     )
                 )
 
-            if settings.TEAMS_WEBHOOK_URL:
+            if teams_webhook_url:
                 configured_webhooks.append(
                     (
                         "teams",
-                        settings.TEAMS_WEBHOOK_URL,
+                        teams_webhook_url,
                     )
                 )
 
             if len(configured_webhooks) == 1:
-                provider, webhook_url = (
-                    configured_webhooks[0]
-                )
+                provider, webhook_url = configured_webhooks[0]
 
         if not webhook_url:
             return {
@@ -528,13 +528,13 @@ class SOARExecutorService:
                 "target": target,
                 "message": (
                     "No Slack or Teams webhook is configured "
-                    "for the requested notification target."
+                    "for this notification target."
                 ),
             }
 
-        # =====================================================
+        # =================================================
         # PAYLOAD
-        # =====================================================
+        # =================================================
 
         payload = {
             "text": (
@@ -544,9 +544,9 @@ class SOARExecutorService:
             )
         }
 
-        # =====================================================
+        # =================================================
         # SEND WEBHOOK
-        # =====================================================
+        # =================================================
 
         try:
             response = requests.post(

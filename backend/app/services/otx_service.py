@@ -3,7 +3,7 @@ import time
 import requests
 
 from app.core.config import settings
-
+from app.core.secrets import secret_manager
 
 class OTXService:
     """
@@ -19,7 +19,7 @@ class OTXService:
     BASE_URL = "https://otx.alienvault.com/api/v1/indicators"
 
     def __init__(self):
-        self.api_key = settings.OTX_API_KEY
+        self.api_key = secret_manager.get("OTX_API_KEY")
 
         self.headers = {
             "X-OTX-API-KEY": self.api_key,

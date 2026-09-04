@@ -2,12 +2,12 @@ import re
 import requests
 
 from app.core.config import settings
-
+from app.core.secrets import secret_manager
 
 class ThreatIntelligenceService:
 
     def __init__(self):
-        self.api_key = settings.ABUSEIPDB_API_KEY
+        self.api_key = secret_manager.get("ABUSEIPDB_API_KEY")
         self.base_url = "https://api.abuseipdb.com/api/v2/check"
 
     def check_ip(self, ip_address: str) -> dict:

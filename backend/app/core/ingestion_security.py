@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import Header, HTTPException, status
 
 from app.core.config import settings
-
+from app.core.secrets import secret_manager
 
 def verify_ingestion_api_key(
     x_soc_ingestion_key: Optional[str] = Header(
@@ -17,7 +17,7 @@ def verify_ingestion_api_key(
     requests coming from Wazuh and Suricata forwarders.
     """
 
-    expected_key = settings.SOC_INGESTION_API_KEY
+    expected_key = secret_manager.get("SOC_INGESTION_API_KEY")
 
     if not expected_key:
         raise HTTPException(

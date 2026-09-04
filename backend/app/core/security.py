@@ -7,7 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import InvalidTokenError
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
-
+from app.core.secrets import secret_manager
 from app.core.config import settings
 from app.database.session import get_db
 from app.models.user import User
@@ -56,7 +56,7 @@ def create_access_token(
 
     return jwt.encode(
         payload,
-        settings.SECRET_KEY,
+        secret_manager.get("SECRET_KEY"),
         algorithm=settings.ALGORITHM,
     )
 
@@ -65,7 +65,7 @@ def decode_access_token(token: str) -> dict:
     try:
         payload = jwt.decode(
             token,
-            settings.SECRET_KEY,
+            secret_manager.get("SECRET_KEY"),
             algorithms=[settings.ALGORITHM],
         )
     except InvalidTokenError as exc:

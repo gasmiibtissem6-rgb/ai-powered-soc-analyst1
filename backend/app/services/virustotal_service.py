@@ -2,7 +2,7 @@ import base64
 import requests
 
 from app.core.config import settings
-
+from app.core.secrets import secret_manager
 
 class VirusTotalService:
     """
@@ -18,7 +18,7 @@ class VirusTotalService:
     BASE_URL = "https://www.virustotal.com/api/v3"
 
     def __init__(self):
-        self.api_key = settings.VIRUSTOTAL_API_KEY
+        self.api_key = secret_manager.get("VIRUSTOTAL_API_KEY")
 
         self.headers = {
             "x-apikey": self.api_key,
