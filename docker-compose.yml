@@ -89,6 +89,7 @@ services:
 
     volumes:
       - ./backend:/app
+      - ./data:/data
 
     labels:
       - "traefik.enable=true"

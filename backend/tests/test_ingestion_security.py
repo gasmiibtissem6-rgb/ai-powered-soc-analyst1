@@ -1,15 +1,15 @@
 import pytest
 from fastapi import HTTPException
 
-from app.core.config import settings
 from app.core.ingestion_security import verify_ingestion_api_key
+from app.core.secrets import secret_manager
 
 
 def test_ingestion_rejects_missing_key(monkeypatch):
     monkeypatch.setattr(
-        settings,
-        "SOC_INGESTION_API_KEY",
-        "test-secret-key",
+        secret_manager,
+        "get",
+        lambda key, default=None: "test-secret-key",
     )
 
     with pytest.raises(HTTPException) as exc:
@@ -21,9 +21,9 @@ def test_ingestion_rejects_missing_key(monkeypatch):
 
 def test_ingestion_rejects_wrong_key(monkeypatch):
     monkeypatch.setattr(
-        settings,
-        "SOC_INGESTION_API_KEY",
-        "test-secret-key",
+        secret_manager,
+        "get",
+        lambda key, default=None: "test-secret-key",
     )
 
     with pytest.raises(HTTPException) as exc:
@@ -35,9 +35,9 @@ def test_ingestion_rejects_wrong_key(monkeypatch):
 
 def test_ingestion_accepts_correct_key(monkeypatch):
     monkeypatch.setattr(
-        settings,
-        "SOC_INGESTION_API_KEY",
-        "test-secret-key",
+        secret_manager,
+        "get",
+        lambda key, default=None: "test-secret-key",
     )
 
     result = verify_ingestion_api_key(
@@ -49,9 +49,9 @@ def test_ingestion_accepts_correct_key(monkeypatch):
 
 def test_ingestion_returns_503_when_not_configured(monkeypatch):
     monkeypatch.setattr(
-        settings,
-        "SOC_INGESTION_API_KEY",
-        "",
+        secret_manager,
+        "get",
+        lambda key, default=None: "",
     )
 
     with pytest.raises(HTTPException) as exc:
