@@ -154,6 +154,24 @@ services:
       - prometheus
 
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3.3
+    container_name: soc-keycloak
+    restart: unless-stopped
+
+    command: start-dev
+
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+
+    ports:
+      - "8080:8080"
+
+
   traefik:
     image: traefik:v3.6
     container_name: soc-traefik
@@ -178,3 +196,4 @@ volumes:
   redis_data:
   prometheus_data:
   grafana_data:
+  keycloak_data:

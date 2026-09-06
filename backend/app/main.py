@@ -20,7 +20,22 @@ from app.api.ai_analysis import router as ai_analysis_router
 from app.api.alerts import router as alerts_router
 from app.api.auth import router as auth_router
 from app.api.incidents import router as incidents_router
-from app.observability.prometheus import REQUEST_COUNT, REQUEST_LATENCY
+from app.database.session import SessionLocal
+from app.observability.prometheus import (
+    AVERAGE_MTTD,
+    AVERAGE_MTTR,
+    FALSE_POSITIVE_COUNT,
+    FALSE_POSITIVE_RATE,
+    INCIDENTS_BY_SEVERITY,
+    INCIDENTS_WITH_MTTD,
+    INCIDENTS_WITH_MTTR,
+    REQUEST_COUNT,
+    REQUEST_LATENCY,
+    REVIEWED_INCIDENTS,
+    TOTAL_INCIDENTS,
+    TRUE_POSITIVE_COUNT,
+)
+from app.services.metrics_service import MetricsService
 from app.services.workflow_retry_service import workflow_retry_loop
 
 
@@ -100,10 +115,92 @@ async def prometheus_middleware(
     include_in_schema=False,
 )
 async def prometheus_metrics():
-    return Response(
-        content=generate_latest(),
-        media_type=CONTENT_TYPE_LATEST,
-    )
+    db = SessionLocal()
+
+    try:
+        global_metrics = MetricsService.get_global_metrics(db)
+        severity_distribution = (
+            MetricsService.get_severity_distribution(db)
+        )
+
+        # --------------------------------------------------
+        # Global SOC metrics
+        # --------------------------------------------------
+
+        TOTAL_INCIDENTS.set(
+            global_metrics["total_incidents"]
+        )
+
+        INCIDENTS_WITH_MTTD.set(
+            global_metrics["incidents_with_mttd"]
+        )
+
+        INCIDENTS_WITH_MTTR.set(
+            global_metrics["incidents_with_mttr"]
+        )
+
+        average_mttd = global_metrics[
+            "average_mttd_seconds"
+        ]
+
+        average_mttr = global_metrics[
+            "average_mttr_seconds"
+        ]
+
+        AVERAGE_MTTD.set(
+            average_mttd
+            if average_mttd is not None
+            else float("nan")
+        )
+
+        AVERAGE_MTTR.set(
+            average_mttr
+            if average_mttr is not None
+            else float("nan")
+        )
+
+        # --------------------------------------------------
+        # Incident quality metrics
+        # --------------------------------------------------
+
+        REVIEWED_INCIDENTS.set(
+            global_metrics["reviewed_incidents"]
+        )
+
+        FALSE_POSITIVE_COUNT.set(
+            global_metrics["false_positive_count"]
+        )
+
+        TRUE_POSITIVE_COUNT.set(
+            global_metrics["true_positive_count"]
+        )
+
+        false_positive_rate = global_metrics[
+            "false_positive_rate"
+        ]
+
+        FALSE_POSITIVE_RATE.set(
+            false_positive_rate
+            if false_positive_rate is not None
+            else float("nan")
+        )
+
+        # --------------------------------------------------
+        # Severity distribution
+        # --------------------------------------------------
+
+        for severity, count in severity_distribution.items():
+            INCIDENTS_BY_SEVERITY.labels(
+                severity=severity
+            ).set(count)
+
+        return Response(
+            content=generate_latest(),
+            media_type=CONTENT_TYPE_LATEST,
+        )
+
+    finally:
+        db.close()
 
 
 # =========================================================
