@@ -3,7 +3,8 @@ from typing import Any, Dict, List
 
 import jwt
 from fastapi import HTTPException, status
-from jwt import InvalidTokenError, PyJWKClient
+from jwt import PyJWKClient
+from jwt.exceptions import InvalidTokenError, PyJWKClientError
 
 from app.core.config import settings
 
@@ -42,7 +43,7 @@ class KeycloakTokenValidator:
                 },
             )
 
-        except InvalidTokenError as exc:
+        except (InvalidTokenError, PyJWKClientError) as exc:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid Keycloak access token",
