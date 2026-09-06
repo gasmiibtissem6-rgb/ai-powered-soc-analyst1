@@ -44,11 +44,10 @@ def send_alert(alert: dict) -> None:
             f"{exc.code}"
         )
 
-    except Exception as exc:
+    except Exception:
         print(
-            "Unable to send Suricata alert:"
+            "Unable to send Suricata alert"
         )
-        print(str(exc))
 
 
 def follow_eve_file() -> None:
