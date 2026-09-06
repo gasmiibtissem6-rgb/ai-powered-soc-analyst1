@@ -10,6 +10,12 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
+    # Keycloak / OpenID Connect
+    KEYCLOAK_URL: str = "http://keycloak:8080"
+    KEYCLOAK_ISSUER: str = "http://localhost:8080/realms/soc"
+    KEYCLOAK_REALM: str = "soc"
+    KEYCLOAK_CLIENT_ID: str = "soc-backend"
+
     # Machine-to-machine ingestion authentication
     SOC_INGESTION_API_KEY: str
 

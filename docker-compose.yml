@@ -83,7 +83,10 @@ services:
       REDIS_URL: redis://redis:6379/0
       VAULT_ADDR: http://vault:8200
       VAULT_TOKEN: ${VAULT_DEV_ROOT_TOKEN_ID}
-
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_ISSUER: http://localhost:8080/realms/soc
+      KEYCLOAK_REALM: soc
+      KEYCLOAK_CLIENT_ID: soc-backend
     ports:
       - "8000:8000"
 
