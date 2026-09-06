@@ -202,7 +202,7 @@ Return JSON only.
                     )
 
             message = (
-                "LLM_RATE_LIMITED: Groq token limit reached."
+                "LLM_RATE_LIMITED: provider rate limit reached."
             )
 
             if retry_after:
@@ -626,7 +626,7 @@ Return plain text only.
 
         except RateLimitError as exc:
             raise RuntimeError(
-                "LLM_RATE_LIMITED: Groq token limit reached."
+                "LLM_RATE_LIMITED: provider rate limit reached."
             ) from exc
 
         except Exception as exc:

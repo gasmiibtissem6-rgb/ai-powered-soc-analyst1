@@ -206,7 +206,7 @@ def delete_analysis(
 
 # =========================================================
 # GENERATE AI ANALYSIS
-# Threat Intelligence + Qwen + MITRE ATT&CK
+# Threat Intelligence + Kimi + MITRE ATT&CK
 # =========================================================
 
 @router.post("/generate/{incident_id}")
@@ -284,7 +284,7 @@ def generate_ai_analysis(
         ]
 
     # -----------------------------------------------------
-    # 3. ANALYSE IA AVEC QWEN
+    # 3. ANALYSE IA AVEC KIMI
     # -----------------------------------------------------
 
     llm = LLMService()
@@ -387,7 +387,7 @@ def generate_ai_analysis(
             False,
         ),
 
-        model_used="qwen/qwen3.6-27b",
+        model_used=settings.LLM_MODEL,
     )
 
     try:

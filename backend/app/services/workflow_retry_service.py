@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # 30 minutes between retry cycles.
 # The first retry is also delayed by 30 minutes,
-# so starting FastAPI does NOT immediately call Groq.
+# so starting FastAPI does NOT immediately call the LLM provider.
 RETRY_INTERVAL_SECONDS = 1800
 
 
@@ -182,7 +182,7 @@ async def workflow_retry_loop() -> None:
 
         # Wait BEFORE the retry.
         # Starting/restarting FastAPI therefore does not
-        # immediately consume Groq quota.
+        # immediately consume LLM provider quota.
         await asyncio.sleep(
             RETRY_INTERVAL_SECONDS
         )

@@ -397,7 +397,7 @@ def receive_suricata_alert(
         # The Suricata alert has already been converted
         # into an incident.
         #
-        # A failure of Groq / LLM / LangGraph must NOT
+        # A failure of LLM / LangGraph must NOT
         # make Suricata ingestion fail.
         #
         # The API therefore keeps HTTP 201.

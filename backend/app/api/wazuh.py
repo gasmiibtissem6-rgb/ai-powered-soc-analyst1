@@ -445,7 +445,7 @@ def receive_wazuh_alert(
         # The Wazuh alert has already been converted
         # into an incident.
         #
-        # A failure of Groq / LLM / LangGraph must NOT
+        # A failure of LLM / LangGraph must NOT
         # make Wazuh believe that alert ingestion failed.
         #
         # The API therefore keeps HTTP 201.

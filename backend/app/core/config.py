@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # =====================================================
 
     GROQ_API_KEY: str
-    LLM_MODEL: str = "qwen/qwen3.6-27b"
+    LLM_MODEL: str = "openai/gpt-oss-120b"
     LLM_BASE_URL: str = "https://api.groq.com/openai/v1"
 
     # =====================================================

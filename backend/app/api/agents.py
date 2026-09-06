@@ -84,7 +84,7 @@ def update_incident_workflow_status(
 
 def is_llm_rate_limit_error(exc: Exception) -> bool:
     """
-    Detect a temporary LLM/Groq rate-limit error.
+    Detect a temporary LLM provider rate-limit error.
     """
 
     error_text = str(exc).lower()
