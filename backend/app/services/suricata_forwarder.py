@@ -23,9 +23,9 @@ def send_alert(alert: dict) -> None:
         API_URL,
         data=payload,
         headers={
-    "Content-Type": "application/json",
-    "X-SOC-Ingestion-Key": SOC_INGESTION_API_KEY,
-},
+            "Content-Type": "application/json",
+            "X-SOC-Ingestion-Key": SOC_INGESTION_API_KEY,
+        },
         method="POST",
     )
 
@@ -34,24 +34,14 @@ def send_alert(alert: dict) -> None:
             request,
             timeout=30,
         ) as response:
-            body = response.read().decode(
-                "utf-8"
-            )
-
             print(
-                "Suricata alert sent:"
+                "Suricata alert sent successfully"
             )
-            print(body)
 
     except urllib.error.HTTPError as exc:
-        body = exc.read().decode(
-            "utf-8",
-            errors="replace",
-        )
-
         print(
             f"FastAPI HTTP error "
-            f"{exc.code}: {body}"
+            f"{exc.code}"
         )
 
     except Exception as exc:
