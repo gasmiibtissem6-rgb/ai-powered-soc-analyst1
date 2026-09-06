@@ -1,4 +1,3 @@
-import traceback
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -113,27 +112,20 @@ def receive_wazuh_alert(
             alert
         )
 
-    except Exception as exc:
+    except Exception:
         print(
             "\n========== WAZUH NORMALIZATION ERROR =========="
         )
         print(
-            f"Error type: {type(exc).__name__}"
+            "Unable to normalize Wazuh alert"
         )
-        print(
-            f"Error message: {str(exc)}"
-        )
-        traceback.print_exc()
         print(
             "===============================================\n"
         )
 
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Unable to normalize Wazuh alert: "
-                f"{str(exc)}"
-            ),
+            detail="Unable to normalize Wazuh alert",
         )
 
     # =====================================================
@@ -147,17 +139,13 @@ def receive_wazuh_alert(
             window_minutes=2,
         )
 
-    except Exception as exc:
+    except Exception:
         print(
             "\n========== WAZUH DEDUP ERROR =========="
         )
         print(
-            f"Error type: {type(exc).__name__}"
+            "Unable to check Wazuh incident deduplication"
         )
-        print(
-            f"Error message: {str(exc)}"
-        )
-        traceback.print_exc()
         print(
             "=======================================\n"
         )
@@ -167,8 +155,7 @@ def receive_wazuh_alert(
                 status.HTTP_500_INTERNAL_SERVER_ERROR
             ),
             detail=(
-                "Unable to check Wazuh incident "
-                f"deduplication: {str(exc)}"
+                "Unable to check Wazuh incident deduplication"
             ),
         )
 
@@ -254,17 +241,13 @@ def receive_wazuh_alert(
             window_minutes=5,
         )
 
-    except Exception as exc:
+    except Exception:
         print(
             "\n========== WAZUH INCIDENT ERROR =========="
         )
         print(
-            f"Error type: {type(exc).__name__}"
+            "Unable to create/correlate incident from Wazuh alert"
         )
-        print(
-            f"Error message: {str(exc)}"
-        )
-        traceback.print_exc()
         print(
             "==========================================\n"
         )
@@ -275,7 +258,7 @@ def receive_wazuh_alert(
             ),
             detail=(
                 "Unable to create/correlate incident from "
-                f"Wazuh alert: {str(exc)}"
+                "Wazuh alert"
             ),
         )
 
@@ -291,17 +274,13 @@ def receive_wazuh_alert(
             )
         )
 
-    except Exception as exc:
+    except Exception:
         print(
             "\n========== WAZUH CORRELATION ERROR =========="
         )
         print(
-            f"Error type: {type(exc).__name__}"
+            "Unable to determine correlation workflow state"
         )
-        print(
-            f"Error message: {str(exc)}"
-        )
-        traceback.print_exc()
         print(
             "============================================\n"
         )
@@ -311,8 +290,7 @@ def receive_wazuh_alert(
                 status.HTTP_500_INTERNAL_SERVER_ERROR
             ),
             detail=(
-                "Unable to determine correlation "
-                f"workflow state: {str(exc)}"
+                "Unable to determine correlation workflow state"
             ),
         )
 
@@ -327,17 +305,13 @@ def receive_wazuh_alert(
                 incident=incident,
             )
 
-        except Exception as exc:
+        except Exception:
             print(
                 "\n========== WAZUH CORRELATION STATUS ERROR =========="
             )
             print(
-                f"Error type: {type(exc).__name__}"
+                "Unable to mark incident as correlated"
             )
-            print(
-                f"Error message: {str(exc)}"
-            )
-            traceback.print_exc()
             print(
                 "===================================================\n"
             )
@@ -347,8 +321,7 @@ def receive_wazuh_alert(
                     status.HTTP_500_INTERNAL_SERVER_ERROR
                 ),
                 detail=(
-                    "Unable to mark incident as "
-                    f"correlated: {str(exc)}"
+                    "Unable to mark incident as correlated"
                 ),
             )
 
@@ -426,17 +399,13 @@ def receive_wazuh_alert(
             request=None,
         )
 
-    except Exception as exc:
+    except Exception:
         print(
             "\n========== WAZUH WORKFLOW ERROR =========="
         )
         print(
-            f"Error type: {type(exc).__name__}"
+            "SOC workflow could not be completed"
         )
-        print(
-            f"Error message: {str(exc)}"
-        )
-        traceback.print_exc()
         print(
             "==========================================\n"
         )
@@ -507,8 +476,9 @@ def receive_wazuh_alert(
             },
             "workflow": {
                 "status": "error",
-                "error_type": type(exc).__name__,
-                "message": str(exc),
+                "message": (
+                    "SOC workflow could not be completed"
+                ),
             },
         }
 
