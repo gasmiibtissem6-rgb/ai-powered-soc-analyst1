@@ -1,5 +1,9 @@
 import ipaddress
+import json
 
+import redis
+
+from app.core.config import settings
 from app.services.threat_intelligence_service import (
     ThreatIntelligenceService,
 )
@@ -31,6 +35,40 @@ class ThreatIntelligenceEnrichmentService:
         self.otx = OTXService()
         self.misp = MISPService()
 
+        self.redis = redis.Redis.from_url(
+            settings.REDIS_URL,
+            decode_responses=True,
+        )
+        self.cache_ttl_seconds = 900
+
+    # =====================================================
+    # REDIS CACHE
+    # =====================================================
+
+    def _get_cached(self, key):
+        try:
+            cached = self.redis.get(key)
+
+            if cached is None:
+                return None
+
+            return json.loads(cached)
+
+        except Exception:
+            # Redis must never block TI enrichment.
+            return None
+
+    def _set_cached(self, key, value):
+        try:
+            self.redis.set(
+                key,
+                json.dumps(value),
+                ex=self.cache_ttl_seconds,
+            )
+        except Exception:
+            # Redis must never block TI enrichment.
+            pass
+
     # =====================================================
     # SAFE PROVIDER CALL
     # =====================================================
@@ -58,6 +96,13 @@ class ThreatIntelligenceEnrichmentService:
         self,
         ip_address,
     ):
+        cache_key = f"soc:ti:ip:{ip_address}"
+
+        cached = self._get_cached(cache_key)
+
+        if cached is not None:
+            return cached
+
         result = {
             "ioc_type": "ip",
             "value": ip_address,
@@ -173,6 +218,11 @@ class ThreatIntelligenceEnrichmentService:
                     ip_address
                 ),
             )
+        )
+
+        self._set_cached(
+            cache_key,
+            result,
         )
 
         return result
