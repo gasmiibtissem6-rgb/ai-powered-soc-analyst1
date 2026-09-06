@@ -5,7 +5,7 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import InvalidTokenError
-from passlib.context import CryptContext
+import bcrypt
 from sqlalchemy.orm import Session
 from app.core.secrets import secret_manager
 from app.core.config import settings
@@ -14,10 +14,7 @@ from app.models.user import User
 from app.core.auth_principal import AuthPrincipal
 from app.core.keycloak import get_keycloak_validator
 
-password_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto",
-)
+
 
 bearer_scheme = HTTPBearer(
     auto_error=False,
@@ -25,17 +22,23 @@ bearer_scheme = HTTPBearer(
 
 
 def hash_password(password: str) -> str:
-    return password_context.hash(password)
+    return bcrypt.hashpw(
+        password.encode("utf-8"),
+        bcrypt.gensalt(),
+    ).decode("utf-8")
 
 
 def verify_password(
     plain_password: str,
     hashed_password: str,
 ) -> bool:
-    return password_context.verify(
-        plain_password,
-        hashed_password,
-    )
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8"),
+        )
+    except (ValueError, TypeError):
+        return False
 
 
 def create_access_token(
