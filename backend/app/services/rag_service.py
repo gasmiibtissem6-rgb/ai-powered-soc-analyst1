@@ -1,11 +1,12 @@
 import hashlib
 import json
 import re
-import shutil
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from qdrant_client import QdrantClient
+
+from app.core.config import settings
 
 from llama_index.core import (
     Document,
@@ -57,12 +58,6 @@ class RAGService:
             project_root
             / "data"
             / "knowledge_base"
-        )
-
-        self.qdrant_path = (
-            project_root
-            / "data"
-            / "qdrant_storage"
         )
 
         self.metadata_path = (
@@ -1277,11 +1272,6 @@ class RAGService:
         ):
             return
 
-        self.qdrant_path.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
         saved_fingerprint = (
             self._load_saved_fingerprint()
         )
@@ -1291,15 +1281,23 @@ class RAGService:
             != current_fingerprint
         )
 
+        client = QdrantClient(
+            url=settings.QDRANT_URL
+        )
+
         if knowledge_changed:
             RAGService._client = None
             RAGService._vector_store = None
             RAGService._index = None
             RAGService._fingerprint = None
 
-            if self.qdrant_path.exists():
-                shutil.rmtree(
-                    self.qdrant_path
+            if self._collection_exists(
+                client
+            ):
+                client.delete_collection(
+                    collection_name=(
+                        self.collection_name
+                    )
                 )
 
         if RAGService._embed_model is None:
@@ -1311,12 +1309,6 @@ class RAGService:
                     normalize=True,
                 )
             )
-
-        client = QdrantClient(
-            path=str(
-                self.qdrant_path
-            )
-        )
 
         vector_store = QdrantVectorStore(
             collection_name=(

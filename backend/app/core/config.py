@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str
     REDIS_URL: str = "redis://localhost:6379/0"
+    QDRANT_URL: str = "http://localhost:6333"
 
     # =====================================================
     # LLM
