@@ -1,8 +1,8 @@
 # AI-Powered SOC Analyst
 
-AI-Powered SOC Analyst is a Security Operations Center (SOC) platform designed to centralize security alerts, detect and correlate incidents, enrich threats with external intelligence, and assist SOC analysts using artificial intelligence and automated response workflows.
+AI-Powered SOC Analyst is a Security Operations Center (SOC) platform designed to centralize security alerts, detect and correlate incidents, enrich threats with external intelligence, and assist SOC analysts using artificial intelligence, machine learning, retrieval-augmented generation, and automated response workflows.
 
-The platform integrates **Wazuh**, **Suricata**, **FastAPI**, **PostgreSQL**, **Machine Learning**, **Threat Intelligence**, **RAG**, **Groq/Qwen**, **MITRE ATT&CK**, **LangGraph multi-agent workflows**, **Human-in-the-Loop (HITL)**, and **SOAR** capabilities.
+The platform integrates **Wazuh**, **Suricata**, **FastAPI**, **PostgreSQL**, **Redis**, **Qdrant**, **Machine Learning**, **Threat Intelligence**, **LlamaIndex RAG**, **Groq**, **MITRE ATT&CK**, **LangGraph multi-agent workflows**, **Human-in-the-Loop (HITL)**, **SOAR**, **HashiCorp Vault**, **Keycloak**, **Traefik**, **Prometheus**, and **Grafana**.
 
 ---
 
@@ -11,77 +11,103 @@ The platform integrates **Wazuh**, **Suricata**, **FastAPI**, **PostgreSQL**, **
 The project aims to:
 
 - Centralize security alerts from multiple sources.
-- Convert security alerts into structured incidents.
-- Correlate related incidents from different security sources.
-- Detect attack patterns using Machine Learning.
-- Enrich suspicious IP addresses using Threat Intelligence.
-- Analyze incidents using an LLM and RAG knowledge base.
-- Map detected attacks to MITRE ATT&CK techniques.
-- Orchestrate SOC analysis using specialized AI agents.
-- Require analyst approval for sensitive high-risk responses.
-- Generate structured SOC reports.
-- Propose and audit SOAR response actions.
-- Provide safe response simulation using SOAR dry-run mode.
+- Normalize security events and convert them into structured incidents.
+- Correlate related incidents across security sources.
+- Detect known attack patterns using supervised Machine Learning.
+- Detect unusual network behavior using anomaly detection.
+- Enrich indicators of compromise using external Threat Intelligence providers.
+- Analyze incidents using an LLM and a cybersecurity RAG knowledge base.
+- Map detected behavior to MITRE ATT&CK techniques.
+- Orchestrate SOC investigations using specialized AI agents.
+- Require human approval for sensitive high-risk response workflows.
+- Generate structured SOC investigation reports.
+- Propose, audit, approve, reject, and execute SOAR response actions.
+- Provide safe response simulation through SOAR dry-run mode.
+- Expose SOC operational metrics through Prometheus and Grafana.
+- Protect APIs and secrets using authentication, RBAC, Vault, and HTTPS.
 
 ---
 
 ## Architecture
 
 ```text
-                 +------------------+
-                 |      Wazuh       |
-                 +--------+---------+
-                          |
-                          v
-+----------+      +-------+--------+
-| Suricata | ---> |    FastAPI     |
-+----------+      |    Backend     |
-                  +-------+--------+
-                          |
-                          v
-                  +-------+--------+
-                  |   PostgreSQL   |
-                  +-------+--------+
-                          |
-                          v
-                +---------+----------+
-                | Incident Correlation|
-                +---------+----------+
-                          |
-                          v
-                  +-------+--------+
-                  | LangGraph SOC  |
-                  |    Workflow    |
-                  +-------+--------+
-                          |
-        +-----------------+-----------------+
-        |                 |                 |
-        v                 v                 v
-   Machine Learning   Threat Intel.     RAG + LLM
-                                           |
-                                           v
-                                     MITRE ATT&CK
-                                           |
-                                           v
-                                  Human Review / HITL
-                                           |
-                                           v
-                                        Response
-                                           |
-                          +----------------+---------------+
-                          |                                |
-                          v                                v
-                     SOC Report                       SOAR Actions
-                                                           |
-                                                           v
-                                                   Audit / Dry Run
+        +-------------+           +-------------+
+        |    Wazuh    |           |  Suricata   |
+        +------+------+           +------+------+
+               |                         |
+               +------------+------------+
+                            |
+                            v
+                   +--------+--------+
+                   | FastAPI Backend |
+                   +--------+--------+
+                            |
+             +--------------+--------------+
+             |                             |
+             v                             v
+      +-------------+                +-------------+
+      | PostgreSQL  |                |    Redis    |
+      +------+------+                +-------------+
+             |
+             v
+     +-------+---------+
+     | Alert / Incident|
+     |   Correlation   |
+     +-------+---------+
+             |
+             v
+     +-------+---------+
+     | LangGraph SOC   |
+     |    Workflow     |
+     +-------+---------+
+             |
+     +-------+--------------------+------------------+
+     |                            |                  |
+     v                            v                  v
++------------+            +---------------+    +-----------+
+| Hybrid ML  |            | Threat Intel. |    | RAG + LLM |
++------------+            +---------------+    +-----+-----+
+ RF / XGBoost                                     |
+ Isolation Forest                                 v
+                                               Qdrant
+                                                  |
+                                                  v
+                                           MITRE ATT&CK
+                                                  |
+                                                  v
+                                           Human Review
+                                              / HITL
+                                                  |
+                                                  v
+                                               Response
+                                                  |
+                                    +-------------+-------------+
+                                    |                           |
+                                    v                           v
+                               SOC Report                  SOAR Actions
+                                                               |
+                                                               v
+                                                        Audit / Dry Run
+```
+
+Infrastructure and security services include:
+
+```text
+Traefik -> HTTPS reverse proxy
+Keycloak -> OIDC authentication
+Vault -> secret management
+Prometheus -> metrics collection
+Grafana -> monitoring dashboards
+Qdrant -> vector database for RAG
+Redis -> Threat Intelligence cache
+PostgreSQL -> persistent SOC data
 ```
 
 ---
 
 ## Multi-Agent SOC Workflow
 
-The SOC workflow is orchestrated with LangGraph.
+The SOC workflow is orchestrated with **LangGraph**.
 
 ```text
 START
@@ -90,18 +116,20 @@ START
 Triage Agent
   |
   v
-Machine Learning
+Machine Learning Agent
   |
   v
-Threat Intelligence
+Threat Intelligence Agent
   |
   v
 Investigation Agent
 (RAG + LLM + MITRE ATT&CK)
   |
-  +---- High / Critical ----> Human Review
-  |                              |
-  +------------------------------+
+  +---- High / Critical ----> Human Review / HITL
+  |                                  |
+  |                            Approve / Reject
+  |                                  |
+  +----------------------------------+
   |
   v
 Response Agent
@@ -113,7 +141,9 @@ Report Agent
 END
 ```
 
-For high or critical incidents, the workflow can be interrupted until a SOC analyst approves or rejects the proposed response.
+For high or critical incidents, the workflow can be interrupted using LangGraph's Human-in-the-Loop mechanism.
+
+An authorized administrator can then approve or reject the workflow before the response phase continues.
 
 ---
 
@@ -121,7 +151,7 @@ For high or critical incidents, the workflow can be interrupted until a SOC anal
 
 ### Wazuh
 
-Wazuh is used for host-based security monitoring and alert generation.
+Wazuh provides host-based security monitoring and alert generation.
 
 Wazuh alerts can be forwarded to:
 
@@ -129,17 +159,23 @@ Wazuh alerts can be forwarded to:
 POST /wazuh/alerts
 ```
 
+The ingestion endpoint is protected by a machine-to-machine ingestion API key.
+
+The prototype has been validated with real Wazuh alerts generated by a monitored Linux endpoint and indexed through the Wazuh stack.
+
 ### Suricata
 
-Suricata provides network IDS/IPS detection.
+Suricata provides network IDS/IPS monitoring using EVE JSON events.
 
-EVE JSON alerts are forwarded to:
+Events can be forwarded to:
 
 ```text
 POST /suricata/alerts
 ```
 
-The integration has been tested with network scanning scenarios such as TCP SYN/Nmap scans.
+Suricata events can also provide network-flow information to the Machine Learning pipeline.
+
+The ingestion endpoint is protected by the same machine-to-machine authentication mechanism.
 
 ---
 
@@ -152,65 +188,146 @@ The platform correlates related incidents using contextual information such as:
 - hostname
 - security source
 - temporal context
+- correlation identifiers
+- source diversity
 
-Correlated incidents share a correlation identifier.
-
-The platform also considers source diversity when calculating correlation confidence.
+Correlated incidents can be retrieved through:
 
 ```text
 GET /incidents/correlation/{correlation_id}
 ```
 
+Correlation information is also made available to the AI investigation workflow.
+
 ---
 
 ## Machine Learning
 
-Machine Learning analysis is integrated into the SOC workflow.
+The platform implements a **hybrid Machine Learning pipeline**.
 
-Prediction endpoint:
+The current prototype combines:
+
+- **Random Forest** — supervised network attack classification
+- **XGBoost** — supervised network attack classification
+- **Isolation Forest** — unsupervised anomaly detection
+
+Prediction endpoints:
 
 ```text
 POST /ml/predict
+POST /ml/suricata-anomaly
 ```
 
-ML results can be incorporated into the incident investigation and final SOC report when the required features are available.
+The supervised models can classify network traffic according to learned classes, while Isolation Forest detects statistically unusual behavior.
+
+The SOC workflow preserves the individual results of the three models instead of relying only on a single global prediction.
+
+For example, when Random Forest and XGBoost classify traffic as `BENIGN` while Isolation Forest detects an `ANOMALY`, the LLM receives both signals and must explicitly reason about the disagreement.
+
+An anomaly increases suspicion but does not automatically prove malicious activity.
+
+The ML pipeline has been developed using cybersecurity datasets including:
+
+- CICIDS2017
+- CSE-CIC-IDS2018
+- UNSW-NB15
 
 ---
 
 ## Threat Intelligence
 
-Threat Intelligence enrichment is performed using AbuseIPDB.
+Threat Intelligence enrichment supports multiple providers.
 
-The service can enrich suspicious IP addresses with information such as:
+### Active providers
 
-- abuse confidence score
-- country
-- ISP
-- domain
-- usage type
-- number of reports
+The prototype has been validated with:
 
-Endpoints:
+- **AbuseIPDB**
+- **VirusTotal**
+- **AlienVault OTX**
+
+The platform supports enrichment for indicators such as:
+
+- IP addresses
+- domains
+- URLs
+- file hashes
+
+Available endpoints include:
 
 ```text
 GET  /threat-intelligence/ip/{ip_address}
 POST /threat-intelligence/analyze
 GET  /threat-intelligence/incident/{incident_id}
+
+GET  /threat-intelligence/virustotal/ip/{ip_address}
+GET  /threat-intelligence/virustotal/domain/{domain}
+GET  /threat-intelligence/virustotal/hash/{file_hash}
+POST /threat-intelligence/virustotal/url
+
+GET  /threat-intelligence/otx/ip/{ip_address}
+GET  /threat-intelligence/otx/domain/{domain}
+GET  /threat-intelligence/otx/hash/{file_hash}
+POST /threat-intelligence/otx/url
 ```
+
+### Redis Cache
+
+Threat Intelligence IP enrichment is cached using **Redis**.
+
+The cache:
+
+- reduces repeated calls to external providers,
+- stores normalized enrichment results,
+- uses a configurable TTL,
+- improves investigation latency.
+
+The current implementation uses cache keys such as:
+
+```text
+soc:ti:ip:{ip_address}
+```
+
+### MISP
+
+MISP support is implemented as an optional Threat Intelligence provider.
+
+Supported IOC types include:
+
+- IP
+- domain
+- URL
+- file hash
+
+If no MISP instance is configured, the provider returns:
+
+```text
+status: not_configured
+```
+
+and the SOC workflow continues normally.
+
+**MISP is not activated in the current prototype environment and must not be considered a live validated provider.**
 
 ---
 
 ## AI Analysis
 
-The AI analysis layer uses an LLM through the Groq API.
+The AI analysis layer communicates with an OpenAI-compatible LLM API through **Groq**.
 
-Default model:
+Current prototype model:
 
 ```text
-qwen/qwen3.6-27b
+openai/gpt-oss-120b
 ```
 
-The AI analysis produces structured information including:
+Base API:
+
+```text
+https://api.groq.com/openai/v1
+```
+
+The AI investigation produces structured information including:
 
 - summary
 - risk level
@@ -222,32 +339,68 @@ Endpoints:
 
 ```text
 GET    /ai-analysis
+POST   /ai-analysis
+
 GET    /ai-analysis/incident/{incident_id}
 GET    /ai-analysis/{analysis_id}
-POST   /ai-analysis
 PUT    /ai-analysis/{analysis_id}
 DELETE /ai-analysis/{analysis_id}
 
 POST /ai-analysis/generate/{incident_id}
 ```
 
-The LLM service also includes handling for API rate limits and malformed model responses.
+The LLM receives evidence from multiple SOC components when available, including:
+
+- incident information
+- Machine Learning results
+- Threat Intelligence
+- RAG evidence
+- correlation information
+- security-source evidence
+
+The prompt explicitly instructs the LLM to reason about disagreement between supervised classification and anomaly detection rather than treating any individual ML result as definitive proof.
+
+> The original project specification considered Kimi K3. The current prototype uses Groq with `openai/gpt-oss-120b` because the configured Moonshot/Kimi service was not available within the prototype's API quota.
 
 ---
 
-## RAG
+## Retrieval-Augmented Generation (RAG)
 
-Retrieval-Augmented Generation provides additional cybersecurity context to the investigation agent.
+Retrieval-Augmented Generation provides cybersecurity knowledge to the Investigation Agent.
 
-Relevant security knowledge can be retrieved and included in the LLM investigation context before the final analysis is generated.
+The implementation uses:
 
-RAG sources used during an investigation can also be stored in the resulting analysis/report.
+- **LlamaIndex**
+- **Qdrant**
+- **Hugging Face embeddings**
+- `sentence-transformers/all-MiniLM-L6-v2`
+
+The cybersecurity knowledge base contains material such as:
+
+- MITRE ATT&CK knowledge
+- SOC playbooks
+- incident response guidance
+- security runbooks
+
+Documents are chunked, embedded, and stored in Qdrant.
+
+The current Qdrant collection is:
+
+```text
+soc_knowledge
+```
+
+Relevant security context is retrieved semantically and included in the LLM investigation context.
+
+RAG sources can also be preserved in SOC investigation reports.
+
+The RAG layer includes protections intended to reduce prompt-injection risks from retrieved content.
 
 ---
 
 ## MITRE ATT&CK
 
-AI-proposed MITRE ATT&CK techniques are validated by the MITRE service.
+AI-proposed MITRE ATT&CK techniques are validated by the MITRE service before being used as validated mappings.
 
 Endpoint:
 
@@ -258,16 +411,18 @@ GET /mitre/technique/{technique_id}
 Example:
 
 ```text
-T1046 - Network Service Discovery
+T1110 - Brute Force
 ```
+
+MITRE information is also incorporated into the investigation and reporting workflow.
 
 ---
 
 ## Human-in-the-Loop
 
-High-risk or critical incidents can require explicit SOC analyst validation before the workflow continues.
+High-risk or critical incidents can require explicit human validation.
 
-Analysis:
+Start analysis:
 
 ```text
 POST /agents/analyze/{incident_id}
@@ -279,20 +434,24 @@ Resume an interrupted workflow:
 POST /agents/resume/{thread_id}
 ```
 
-This allows an analyst to approve or reject a proposed response.
+The resume operation is restricted to authorized administrative users.
+
+The Human-in-the-Loop mechanism allows an analyst or administrator to approve or reject the proposed response before the workflow continues.
+
+This prevents high-risk automated actions from bypassing human supervision.
 
 ---
 
 ## SOAR
 
-The SOAR module manages response actions.
+The prototype implements an **internal SOAR module**.
 
-Supported API operations include:
+Supported operations include:
 
 ```text
 GET  /soar
-GET  /soar/{action_id}
 POST /soar
+GET  /soar/{action_id}
 
 POST /soar/{action_id}/approve
 POST /soar/{action_id}/reject
@@ -301,38 +460,70 @@ POST /soar/{action_id}/execute
 GET /soar/{action_id}/logs
 ```
 
-SOAR actions include concepts such as:
+Supported response concepts include:
 
 - security ticket creation
-- IP blocking proposals
-- endpoint isolation proposals
+- IP blocking
+- endpoint isolation
+- user disabling
+- notifications
+
+### Human Approval
+
+Sensitive SOAR actions can require approval before execution.
+
+The lifecycle supports:
+
+```text
+Create
+  |
+  v
+Pending Approval
+  |
+  +---- Reject
+  |
+  +---- Approve
+          |
+          v
+       Execute
+          |
+          v
+       Audit Log
+```
 
 ### Safe Execution
 
-The default configuration is:
+The prototype defaults to safe execution settings:
 
 ```env
 SOAR_EXECUTION_MODE=dry_run
 SOAR_ENABLE_BLOCK_IP=false
 SOAR_ENABLE_ISOLATE_ENDPOINT=false
+SOAR_ENABLE_DISABLE_USER=false
+SOAR_ENABLE_SEND_NOTIFICATION=false
 ```
 
-Therefore potentially disruptive response actions are not executed against real infrastructure by default.
+Potentially disruptive actions are therefore not executed against real infrastructure by default.
 
-The SOAR audit trail records action lifecycle events and execution/simulation results.
+### Shuffle
+
+Shuffle was considered as an external SOAR platform during the project.
+
+However, **Shuffle is not integrated into the main prototype stack**. The validated prototype uses the internal FastAPI SOAR implementation described above.
 
 ---
 
 ## SOC Reports
 
-The Report Agent generates structured SOC reports containing investigation results such as:
+The Report Agent generates structured SOC reports containing investigation evidence such as:
 
 - incident information
 - AI analysis
 - risk level
-- ML results
+- Machine Learning results
 - MITRE ATT&CK mapping
 - RAG sources
+- Threat Intelligence
 - correlation context
 - human review status
 - response status
@@ -348,20 +539,136 @@ GET /reports/{report_id}
 
 ---
 
+## Authentication and Authorization
+
+The backend supports authentication and Role-Based Access Control (RBAC).
+
+Local authentication uses JWT tokens.
+
+Endpoints:
+
+```text
+POST /auth/register
+POST /auth/login
+GET  /auth/me
+```
+
+Protected SOC endpoints require authenticated users with appropriate roles.
+
+The prototype also integrates **Keycloak** for OpenID Connect authentication.
+
+Keycloak configuration includes:
+
+```text
+Realm: soc
+Client: soc-backend
+```
+
+The Keycloak integration validates tokens using the provider's JWKS keys.
+
+For frontend applications, Authorization Code Flow with PKCE is the intended authentication approach.
+
+---
+
+## Secret Management
+
+Sensitive backend configuration can be retrieved through **HashiCorp Vault**.
+
+The prototype uses the Vault KV v2 secret engine.
+
+Configured path:
+
+```text
+secret/soc-backend
+```
+
+The validated Vault configuration contains the required backend secrets, including:
+
+```text
+SECRET_KEY
+SOC_INGESTION_API_KEY
+GROQ_API_KEY
+ABUSEIPDB_API_KEY
+VIRUSTOTAL_API_KEY
+OTX_API_KEY
+```
+
+The application Secret Manager attempts to obtain sensitive values from Vault and can fall back to application configuration when appropriate.
+
+**Important:** the current Docker Compose environment uses Vault in development mode. Production deployment requires a persistent and properly secured Vault configuration.
+
+Never commit real API keys, Vault tokens, passwords, JWTs, or `.env` files to Git.
+
+---
+
+## HTTPS and Reverse Proxy
+
+**Traefik v3.6** is used as the reverse proxy for the prototype.
+
+The primary backend URL is:
+
+```text
+https://soc.local
+```
+
+HTTP traffic is redirected to HTTPS.
+
+Validated endpoints include:
+
+```text
+https://soc.local/health
+https://soc.local/docs
+https://soc.local/openapi.json
+```
+
+Local development certificates are not committed to Git.
+
+---
+
+## Monitoring
+
+The platform exposes operational metrics for Prometheus.
+
+Endpoints include:
+
+```text
+GET /metrics
+GET /metrics/dashboard
+GET /metrics/severity
+```
+
+The infrastructure includes:
+
+- **Prometheus** for metrics collection
+- **Grafana** for dashboard visualization
+
+SOC metrics include information related to:
+
+- total incidents
+- incident severity distribution
+- MTTD
+- MTTR
+- workflow activity
+
+---
+
 ## REST API
+
+The FastAPI application exposes **45 OpenAPI paths** in the current prototype.
 
 ### Authentication
 
 ```text
 POST /auth/register
 POST /auth/login
+GET  /auth/me
 ```
 
 ### Alerts
 
 ```text
-POST   /alerts
 GET    /alerts
+POST   /alerts
 GET    /alerts/{alert_id}
 PUT    /alerts/{alert_id}
 DELETE /alerts/{alert_id}
@@ -372,10 +679,11 @@ DELETE /alerts/{alert_id}
 ```text
 GET    /incidents
 POST   /incidents
-GET    /incidents/correlation/{correlation_id}
 GET    /incidents/{incident_id}
 PUT    /incidents/{incident_id}
 DELETE /incidents/{incident_id}
+
+GET /incidents/correlation/{correlation_id}
 ```
 
 ### AI Agents
@@ -385,17 +693,33 @@ POST /agents/analyze/{incident_id}
 POST /agents/resume/{thread_id}
 ```
 
+### Machine Learning
+
+```text
+POST /ml/predict
+POST /ml/suricata-anomaly
+```
+
 ### Monitoring
 
 ```text
 GET /
 GET /health
+GET /metrics
+GET /metrics/dashboard
+GET /metrics/severity
 ```
 
-Interactive API documentation is available through Swagger UI:
+Interactive API documentation:
 
 ```text
-http://127.0.0.1:8000/docs
+https://soc.local/docs
+```
+
+OpenAPI schema:
+
+```text
+https://soc.local/openapi.json
 ```
 
 ---
@@ -404,39 +728,92 @@ http://127.0.0.1:8000/docs
 
 ### Backend
 
-- Python
+- Python 3.13
 - FastAPI
 - SQLAlchemy
 - Pydantic
 - Alembic
-- PostgreSQL
+- PostgreSQL 16
 
 ### Artificial Intelligence
 
 - LangGraph
-- Groq API
-- Qwen
+- Groq OpenAI-compatible API
+- `openai/gpt-oss-120b`
+- LlamaIndex
 - Retrieval-Augmented Generation (RAG)
+- Hugging Face sentence-transformer embeddings
+- Qdrant
+
+### Machine Learning
+
+- Scikit-learn
+- XGBoost
+- PyTorch CPU runtime
+- Random Forest
+- XGBoost classifier
+- Isolation Forest
 
 ### Cybersecurity
 
 - Wazuh
 - Suricata
-- AbuseIPDB
 - MITRE ATT&CK
-- SOAR
+- AbuseIPDB
+- VirusTotal
+- AlienVault OTX
+- Optional MISP integration
+- Internal SOAR
 - Human-in-the-Loop
 
-### Machine Learning
+### Security
 
-- Scikit-learn / project ML pipeline
-- Network attack classification
+- JWT
+- RBAC
+- Keycloak / OpenID Connect
+- HashiCorp Vault
+- Machine-to-machine ingestion API key
+- HTTPS / TLS
+- Traefik reverse proxy
 
-### Infrastructure
+### Data and Infrastructure
 
+- PostgreSQL
+- Redis
+- Qdrant
+- Docker Compose
+- Prometheus
+- Grafana
+- Traefik
+- Vault
+- Keycloak
 - Linux
-- Docker
 - Git / GitHub
+- GitHub Actions
+
+---
+
+## Docker Compose Services
+
+The prototype Docker Compose stack includes:
+
+```text
+soc-backend
+soc-postgres
+soc-redis
+soc-qdrant
+soc-vault
+soc-keycloak
+soc-traefik
+soc-prometheus
+soc-grafana
+```
+
+Check service status with:
+
+```bash
+docker compose ps
+```
 
 ---
 
@@ -461,15 +838,14 @@ ai-powered-soc-analyst/
 │   ├── migrations/
 │   ├── tests/
 │   ├── .env.example
+│   ├── Dockerfile
 │   └── requirements.txt
 │
-├── frontend/
 ├── data/
-├── docker/
 ├── docs/
-├── scripts/
+├── infrastructure/
+├── monitoring/
 ├── docker-compose.yml
-├── requirements.txt
 └── README.md
 ```
 
@@ -484,67 +860,113 @@ cd backend
 cp .env.example .env
 ```
 
-Configure the required values in `.env`.
+Never place real credentials in `.env.example`.
 
-Main variables:
+Example development configuration:
 
 ```env
-SECRET_KEY=your_secret_key
+# Authentication
+SECRET_KEY=change_me_with_a_secure_random_secret
+SOC_INGESTION_API_KEY=change_me_with_a_secure_ingestion_key
 
+# Database / Cache / Vector Store
 DATABASE_URL=postgresql://soc_admin:your_password@localhost:5432/soc_db
+REDIS_URL=redis://localhost:6379/0
+QDRANT_URL=http://localhost:6333
 
-GROQ_API_KEY=your_groq_api_key
-LLM_MODEL=qwen/qwen3.6-27b
+# LLM
+GROQ_API_KEY=your_groq_api_key_here
+LLM_MODEL=openai/gpt-oss-120b
 LLM_BASE_URL=https://api.groq.com/openai/v1
 
-ABUSEIPDB_API_KEY=your_abuseipdb_api_key
+# Threat Intelligence
+ABUSEIPDB_API_KEY=your_abuseipdb_api_key_here
+VIRUSTOTAL_API_KEY=your_virustotal_api_key_here
+OTX_API_KEY=your_otx_api_key_here
 
+# Optional MISP
+MISP_URL=
+MISP_API_KEY=
+MISP_VERIFY_SSL=true
+
+# SOAR
 SOAR_EXECUTION_MODE=dry_run
 SOAR_ENABLE_BLOCK_IP=false
 SOAR_ENABLE_ISOLATE_ENDPOINT=false
+SOAR_ENABLE_DISABLE_USER=false
+SOAR_ENABLE_SEND_NOTIFICATION=false
+
+# Vault
+VAULT_ADDR=
+VAULT_TOKEN=
+VAULT_MOUNT_POINT=secret
+VAULT_SECRET_PATH=soc-backend
 ```
 
-Never commit the real `.env` file or API keys to Git.
+The Docker Compose configuration overrides several service URLs so containers communicate through the Docker network.
 
 ---
 
 ## Backend Installation
 
-Create and activate a virtual environment:
+The authoritative container runtime uses **Python 3.13**.
+
+For local development:
 
 ```bash
 cd backend
 
-python3 -m venv venv
+python3.13 -m venv venv
 source venv/bin/activate
 ```
 
 Install dependencies:
 
 ```bash
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-Configure `.env`, then apply database migrations:
+Apply database migrations:
 
 ```bash
 alembic upgrade head
+```
+
+### Docker
+
+The recommended prototype environment uses Docker Compose:
+
+```bash
+docker compose up -d --build
+```
+
+Check the services:
+
+```bash
+docker compose ps
 ```
 
 ---
 
 ## Run the Backend
 
-Start FastAPI with:
+For direct local development:
 
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-API documentation:
+For the validated Docker/Traefik environment:
 
 ```text
-http://127.0.0.1:8000/docs
+https://soc.local
+```
+
+Swagger UI:
+
+```text
+https://soc.local/docs
 ```
 
 Health endpoint:
@@ -557,25 +979,53 @@ GET /health
 
 ## Tests
 
-Run the backend test suite with:
+Run the backend test suite inside the authoritative Python 3.13 Docker environment:
 
 ```bash
-cd backend
-source venv/bin/activate
-python -m pytest -v
+docker exec -w /app soc-backend python -m pytest -q
 ```
 
-The smoke tests verify:
+Current validated result:
 
-- FastAPI application startup
-- OpenAPI availability
-- registration of core SOC API routes
+```text
+69 passed
+```
+
+The test suite covers components including:
+
+- FastAPI startup
+- API routes
+- authentication and RBAC
+- ingestion security
+- alerts and incidents
+- correlation
+- Machine Learning adapters
+- operational incident timestamps
+- metrics
+- SOAR services and execution
+- Vault integration behavior
+- security controls
+
+SOAR-specific tests can be executed with:
+
+```bash
+docker exec -w /app soc-backend \
+  python -m pytest -q \
+  tests/test_soar_service.py \
+  tests/test_soar_executor.py
+```
+
+Validated result:
+
+```text
+7 passed
+```
 
 ---
 
-## Demonstrated End-to-End Flow
+## Demonstrated End-to-End SOC Flow
 
-The platform supports the following complete SOC flow:
+A representative end-to-end workflow has been validated through the backend.
 
 ```text
 Security Event
@@ -584,79 +1034,184 @@ Security Event
 Wazuh / Suricata
      |
      v
-FastAPI ingestion
+Authenticated FastAPI Ingestion
      |
      v
-Incident creation
+Normalization
+     |
+     v
+Incident Creation
      |
      v
 Correlation
      |
      v
-Triage
+Triage Agent
      |
      v
-Machine Learning
+Hybrid Machine Learning
+(Random Forest + XGBoost + Isolation Forest)
      |
      v
 Threat Intelligence
      |
      v
-RAG + LLM Investigation
+RAG Retrieval
      |
      v
-MITRE ATT&CK
+LLM Investigation
      |
      v
-Human Review (when required)
+MITRE ATT&CK Validation
      |
      v
-Response
+Human Review / HITL
+     |
+     v
+Response Agent
      |
      v
 SOC Report
      |
      v
-SOAR Action / Dry Run
+SOAR Action
      |
      v
 Audit Trail
 ```
 
-This architecture keeps the SOC analyst in control of sensitive response actions while using AI and automation to accelerate investigation and response.
+A representative hybrid ML scenario demonstrated that the workflow can preserve conflicting evidence:
+
+```text
+Random Forest    -> BENIGN
+XGBoost          -> BENIGN
+Isolation Forest -> ANOMALY
+```
+
+The Investigation Agent used the full ML evidence and explicitly reasoned about the disagreement rather than ignoring the anomaly.
+
+The high-risk workflow paused for Human Review and successfully continued after authorized approval through:
+
+```text
+Triage
+-> Machine Learning
+-> Threat Intelligence
+-> Investigation
+-> Human Review
+-> Response
+-> Report
+```
+
+The resulting AI analysis, SOC report, and SOAR action were persisted.
+
+This validation demonstrates the integration of the main SOC pipeline. It does **not** imply that every attack type, dataset, security source, or response action has been tested end-to-end.
 
 ---
 
 ## Security Notes
 
-- API keys and secrets are stored in `.env`.
-- `.env` must not be committed to Git.
-- `.env.example` contains only example values.
-- SOAR defaults to `dry_run`.
-- IP blocking and endpoint isolation are disabled by default.
-- High-risk response workflows can require human approval.
+The prototype includes multiple security controls:
+
+- JWT authentication
+- Role-Based Access Control (RBAC)
+- Keycloak / OIDC integration
+- HTTPS through Traefik
+- machine-to-machine authentication for Wazuh and Suricata ingestion
+- HashiCorp Vault secret management
+- constant-time comparison for ingestion API keys
+- restricted CORS origins
+- sanitized API error handling
+- prompt-injection protections for RAG
+- Human-in-the-Loop approval
+- SOAR dry-run mode
+- audit logging
+
+Sensitive values must never be committed to Git.
+
+The following should remain excluded from source control:
+
+```text
+.env
+API keys
+passwords
+Vault tokens
+JWTs
+TLS private keys
+local certificates where appropriate
+```
+
+The current Vault and Keycloak containers use development-oriented modes for the prototype. They require production hardening before deployment in a real SOC environment.
+
+---
+
+## CI/CD
+
+Backend tests are integrated with **GitHub Actions**.
+
+The CI environment uses Python 3.13 and executes the backend automated test suite on repository changes.
+
+This helps detect regressions before changes are accepted into the main branch.
+
+---
+
+## Prototype Limitations
+
+The current prototype intentionally has several limitations:
+
+- MISP support is implemented but no live MISP instance is configured.
+- Shuffle is not integrated into the main prototype; the internal SOAR module is used instead.
+- Vault currently runs in development mode.
+- Keycloak currently runs in development mode.
+- Destructive SOAR operations are disabled by default.
+- Kubernetes/K3s deployment is considered future work.
+- Commercial EDR integration is outside the current prototype scope.
+- Full cloud-provider integration is outside the current prototype scope.
+- Large-scale production load testing is outside the current scope.
+- Not every attack category or security-source type has been validated end-to-end.
+
+These limitations distinguish implemented prototype capabilities from planned production extensions.
 
 ---
 
 ## Project Status
 
-The backend currently includes the main SOC analysis pipeline:
+The backend prototype currently includes:
 
 - Alert and incident management
-- Wazuh integration
-- Suricata integration
-- Incident correlation
-- Machine Learning integration
-- Threat Intelligence enrichment
-- RAG-based investigation
-- LLM-based analysis
+- Wazuh ingestion
+- Suricata ingestion
+- machine-to-machine ingestion authentication
+- incident correlation and deduplication
+- risk assessment
+- Random Forest classification
+- XGBoost classification
+- Isolation Forest anomaly detection
+- hybrid ML evidence processing
+- AbuseIPDB Threat Intelligence
+- VirusTotal Threat Intelligence
+- AlienVault OTX Threat Intelligence
+- optional MISP provider support
+- Redis Threat Intelligence caching
+- LlamaIndex RAG
+- Qdrant vector storage
+- LLM-based incident investigation
 - MITRE ATT&CK validation
 - LangGraph multi-agent orchestration
 - Human-in-the-Loop
 - SOC report generation
-- SOAR response workflow
-- SOAR audit logging
-- Backend smoke tests
+- internal SOAR workflows
+- SOAR approval and audit logging
+- PostgreSQL persistence
+- JWT and RBAC
+- Keycloak / OIDC
+- HashiCorp Vault
+- Traefik HTTPS
+- Prometheus metrics
+- Grafana dashboards
+- Docker Compose infrastructure
+- GitHub Actions CI
+- Swagger / OpenAPI documentation
+- automated backend tests
 
 The frontend dashboard is maintained as a separate project component.
 
@@ -664,4 +1219,6 @@ The frontend dashboard is maintained as a separate project component.
 
 ## Academic Context
 
-This project was developed as a Final Year Project (PFE) focused on applying artificial intelligence, cybersecurity monitoring, threat intelligence, automation, and human-supervised response to modern Security Operations Center workflows.
+This project was developed as a Final Year Project (PFE) focused on applying artificial intelligence, Machine Learning, cybersecurity monitoring, Threat Intelligence, Retrieval-Augmented Generation, multi-agent orchestration, automation, and human-supervised response to modern Security Operations Center workflows.
+
+The prototype emphasizes a hybrid SOC architecture in which AI and automation assist analysts while sensitive response decisions remain under human control.
