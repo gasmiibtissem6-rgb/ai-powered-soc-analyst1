@@ -81,11 +81,11 @@ class ThreatIntelligenceEnrichmentService:
         try:
             return callback()
 
-        except Exception as exc:
+        except Exception:
             return {
                 "status": "error",
                 "provider": provider_name,
-                "error": str(exc),
+                "error": "Threat intelligence provider request failed",
             }
 
     # =====================================================
