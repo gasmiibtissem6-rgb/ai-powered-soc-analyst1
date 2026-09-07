@@ -423,9 +423,9 @@ def main() -> None:
                     encoding="utf-8"
                 )
             )
-        except Exception as exc:
+        except Exception:
             print(
-                f"Skipping {path.name}: {exc}"
+                f"Skipping invalid CVE file: {path.name}"
             )
             continue
 

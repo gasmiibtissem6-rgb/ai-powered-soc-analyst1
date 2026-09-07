@@ -81,10 +81,10 @@ class ThreatIntelligenceService:
                 result = self.check_ip(ip)
                 results.append(result)
 
-            except Exception as e:
+            except Exception:
                 results.append({
                     "ip_address": ip,
-                    "error": str(e)
+                    "error": "Threat intelligence analysis failed"
                 })
 
         return results

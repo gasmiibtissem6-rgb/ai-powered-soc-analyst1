@@ -557,7 +557,7 @@ class SOARExecutorService:
 
             response.raise_for_status()
 
-        except requests.RequestException as exc:
+        except requests.RequestException:
             return {
                 "success": False,
                 "executed": False,
@@ -566,10 +566,7 @@ class SOARExecutorService:
                 "action_type": "send_notification",
                 "target": target,
                 "provider": provider,
-                "message": (
-                    "External SOC notification failed: "
-                    f"{exc}"
-                ),
+                "message": "External SOC notification failed",
             }
 
         return {

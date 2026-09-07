@@ -217,7 +217,7 @@ Return JSON only.
 
         except Exception as exc:
             raise RuntimeError(
-                f"LLM_REQUEST_FAILED: {exc}"
+                "LLM_REQUEST_FAILED: provider request failed."
             ) from exc
 
         # =====================================================
@@ -631,7 +631,7 @@ Return plain text only.
 
         except Exception as exc:
             raise RuntimeError(
-                f"LLM_REQUEST_FAILED: {exc}"
+                "LLM_REQUEST_FAILED: provider request failed."
             ) from exc
 
         # =====================================================
