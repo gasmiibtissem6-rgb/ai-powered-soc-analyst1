@@ -66,15 +66,12 @@ def update_incident_workflow_status(
         db.commit()
         db.refresh(incident)
 
-    except Exception as exc:
+    except Exception:
         db.rollback()
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "Unable to update incident workflow status: "
-                f"{str(exc)}"
-            ),
+            detail="Unable to update incident workflow status",
         )
 
 
@@ -346,17 +343,14 @@ def save_ai_analysis(
         db.commit()
         db.refresh(db_analysis)
 
-    except Exception as exc:
+    except Exception:
         db.rollback()
 
         raise HTTPException(
             status_code=(
                 status.HTTP_500_INTERNAL_SERVER_ERROR
             ),
-            detail=(
-                "Unable to save AI analysis: "
-                f"{str(exc)}"
-            ),
+            detail="Unable to save AI analysis",
         )
 
     return db_analysis
@@ -627,17 +621,14 @@ ml_anomaly_score=ml_analysis.get(
         db.commit()
         db.refresh(db_report)
 
-    except Exception as exc:
+    except Exception:
         db.rollback()
 
         raise HTTPException(
             status_code=(
                 status.HTTP_500_INTERNAL_SERVER_ERROR
             ),
-            detail=(
-                "Unable to save SOC report: "
-                f"{str(exc)}"
-            ),
+            detail="Unable to save SOC report",
         )
 
     return db_report
@@ -750,15 +741,12 @@ def save_soar_action(
         db.commit()
         db.refresh(db_action)
 
-    except Exception as exc:
+    except Exception:
         db.rollback()
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "Unable to save SOAR action: "
-                f"{str(exc)}"
-            ),
+            detail="Unable to save SOAR action",
         )
 
     return db_action
@@ -1113,17 +1101,14 @@ def run_soc_workflow(
             http_status = (
                 status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-            detail = (
-                "SOC agents workflow failed: "
-                f"{str(exc)}"
-            )
+            detail = "SOC agents workflow failed"
 
         try:
             update_incident_workflow_status(
                 db=db,
                 incident=incident,
                 workflow_status=workflow_status,
-                workflow_error=str(exc),
+                workflow_error=detail,
             )
 
         except Exception:
@@ -1187,7 +1172,7 @@ def run_soc_workflow(
                 db=db,
                 incident=incident,
                 workflow_status="failed",
-                workflow_error=str(exc),
+                workflow_error="SOC workflow result persistence failed",
             )
 
         except Exception:
@@ -1275,13 +1260,10 @@ def resume_soc_workflow(
             config
         )
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "Unable to read workflow state: "
-                f"{str(exc)}"
-            ),
+            detail="Unable to read workflow state",
         )
 
     # -----------------------------------------------------
@@ -1425,17 +1407,14 @@ def resume_soc_workflow(
             http_status = (
                 status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-            detail = (
-                "Unable to resume workflow: "
-                f"{str(exc)}"
-            )
+            detail = "Unable to resume workflow"
 
         try:
             update_incident_workflow_status(
                 db=db,
                 incident=db_incident,
                 workflow_status=workflow_status,
-                workflow_error=str(exc),
+                workflow_error=detail,
             )
 
         except Exception:
@@ -1499,7 +1478,7 @@ def resume_soc_workflow(
                 db=db,
                 incident=db_incident,
                 workflow_status="failed",
-                workflow_error=str(exc),
+                workflow_error="SOC workflow result persistence failed",
             )
 
         except Exception:
