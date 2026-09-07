@@ -109,7 +109,7 @@ class MISPService:
 
         except requests.RequestException as exc:
             raise RuntimeError(
-                f"MISP request failed: {str(exc)}"
+                "MISP request failed."
             ) from exc
 
         # =================================================
