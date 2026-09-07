@@ -32,7 +32,6 @@ FEATURE_COLUMNS = [
     "fin_flag",
     "psh_flag",
     "ack_flag",
-    "alerted",
 ]
 
 

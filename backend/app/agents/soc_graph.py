@@ -784,7 +784,7 @@ def investigation_agent(
 
         rag_context = []
 
-    # =====================================================
+        # =====================================================
     # MACHINE LEARNING CONTEXT
     # =====================================================
 
@@ -800,43 +800,127 @@ def investigation_agent(
         ) == "success"
     ):
 
+        random_forest = ml_analysis.get(
+            "random_forest"
+        ) or {}
+
+        xgboost = ml_analysis.get(
+            "xgboost"
+        ) or {}
+
+        isolation_forest = ml_analysis.get(
+            "isolation_forest"
+        ) or {}
+
         ml_context = [
             {
                 "source": "machine_learning",
 
+                # -------------------------------------------------
+                # Global supervised prediction
+                # -------------------------------------------------
                 "prediction": (
                     ml_analysis.get(
                         "prediction"
                     )
                 ),
 
-                "benign_probability": (
-                    ml_analysis.get(
+                # -------------------------------------------------
+                # Random Forest
+                # -------------------------------------------------
+                "random_forest_prediction": (
+                    random_forest.get(
+                        "prediction"
+                    )
+                ),
+
+                "random_forest_benign_probability": (
+                    random_forest.get(
                         "benign_probability"
                     )
                 ),
 
-                "ddos_probability": (
-                    ml_analysis.get(
+                "random_forest_ddos_probability": (
+                    random_forest.get(
                         "ddos_probability"
                     )
                 ),
 
-                "portscan_probability": (
-                    ml_analysis.get(
+                "random_forest_portscan_probability": (
+                    random_forest.get(
                         "portscan_probability"
                     )
                 ),
 
-                "ftp_patator_probability": (
-                    ml_analysis.get(
+                "random_forest_ftp_patator_probability": (
+                    random_forest.get(
                         "ftp_patator_probability"
                     )
                 ),
 
-                "ssh_patator_probability": (
-                    ml_analysis.get(
+                "random_forest_ssh_patator_probability": (
+                    random_forest.get(
                         "ssh_patator_probability"
+                    )
+                ),
+
+                # -------------------------------------------------
+                # XGBoost
+                # -------------------------------------------------
+                "xgboost_prediction": (
+                    xgboost.get(
+                        "prediction"
+                    )
+                ),
+
+                "xgboost_benign_probability": (
+                    xgboost.get(
+                        "benign_probability"
+                    )
+                ),
+
+                "xgboost_ddos_probability": (
+                    xgboost.get(
+                        "ddos_probability"
+                    )
+                ),
+
+                "xgboost_portscan_probability": (
+                    xgboost.get(
+                        "portscan_probability"
+                    )
+                ),
+
+                "xgboost_ftp_patator_probability": (
+                    xgboost.get(
+                        "ftp_patator_probability"
+                    )
+                ),
+
+                "xgboost_ssh_patator_probability": (
+                    xgboost.get(
+                        "ssh_patator_probability"
+                    )
+                ),
+
+                # -------------------------------------------------
+                # Isolation Forest
+                # -------------------------------------------------
+                "isolation_forest_prediction": (
+                    isolation_forest.get(
+                        "prediction"
+                    )
+                ),
+
+                "is_anomaly": (
+                    ml_analysis.get(
+                        "is_anomaly"
+                    )
+                ),
+
+                "anomaly_score": (
+                    ml_analysis.get(
+                        "anomaly_score"
                     )
                 ),
             }

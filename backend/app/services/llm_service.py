@@ -93,7 +93,50 @@ Use all available evidence:
 
 1. Incident information.
 2. Threat intelligence.
-3. SOC knowledge base and playbooks.
+3. Machine learning analysis.
+4. SOC knowledge base and playbooks.
+5. Correlated incidents and multi-source evidence when available.
+
+IMPORTANT MACHINE LEARNING INTERPRETATION
+
+When machine learning results are available, analyze the individual
+models separately:
+
+- Random Forest is a supervised classifier.
+- XGBoost is a supervised classifier.
+- Isolation Forest is an anomaly detector.
+
+A BENIGN prediction from Random Forest or XGBoost does NOT prove that
+the network activity is harmless.
+
+An ANOMALY result from Isolation Forest means that the observed behavior
+is statistically unusual compared with the behavior learned by the
+anomaly detection model. It does NOT automatically prove that the
+activity is malicious.
+
+When supervised classifiers predict BENIGN but Isolation Forest detects
+an ANOMALY, explicitly mention this disagreement in the explanation.
+
+In this situation:
+
+- Do not automatically classify the incident as malicious.
+- Treat the anomaly as an additional suspicious signal.
+- Consider the incident context, Suricata evidence, threat intelligence,
+  RAG evidence, and correlation evidence.
+- If the incident has a high-severity security alert and an anomaly is
+  detected, the anomaly should increase the level of suspicion.
+- Explain clearly why the supervised models and anomaly detector may
+  disagree.
+- Never ignore an Isolation Forest anomaly simply because the
+  classification models predict BENIGN.
+
+Use the actual ML probabilities when they are available.
+
+For example, if Random Forest and XGBoost predict BENIGN while
+Isolation Forest predicts ANOMALY, the explanation should state that
+the classifiers did not identify the traffic as one of their learned
+attack classes, while the anomaly detector identified unusual network
+behavior.
 
 Important considerations:
 

@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 from uuid import uuid4
 
 from fastapi import (
@@ -43,6 +43,7 @@ class HumanDecision(BaseModel):
 
 class AnalyzeIncidentRequest(BaseModel):
     ml_features: Optional[Dict[str, float]] = None
+    suricata_event: Optional[Dict[str, Any]] = None
 
 
 # =========================================================
@@ -1226,10 +1227,15 @@ def analyze_incident_with_agents(
             detail="Incident not found",
         )
 
-    return run_soc_workflow(
+        return run_soc_workflow(
         db=db,
         incident=incident,
         request=request,
+        suricata_event=(
+            request.suricata_event
+            if request
+            else None
+        ),
     )
 
 
