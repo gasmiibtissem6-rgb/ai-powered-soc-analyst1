@@ -60,13 +60,10 @@ def predict_network_traffic(
             ],
         }
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Prediction failed: "
-                f"{str(exc)}"
-            ),
+            detail="Prediction failed",
         )
 
 
@@ -107,11 +104,8 @@ def predict_suricata_flow_anomaly(
             ],
         }
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Suricata anomaly prediction "
-                f"failed: {str(exc)}"
-            ),
+            detail="Suricata anomaly prediction failed",
         )
