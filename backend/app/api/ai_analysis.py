@@ -271,15 +271,12 @@ def generate_ai_analysis(
             )
         )
 
-    except Exception as exc:
+    except Exception:
 
         threat_intelligence = [
             {
                 "status": "error",
-                "error": (
-                    "Threat Intelligence failed: "
-                    f"{str(exc)}"
-                ),
+                "error": "Threat Intelligence analysis failed",
             }
         ]
 
@@ -299,14 +296,11 @@ def generate_ai_analysis(
             threat_intelligence=threat_intelligence,
         )
 
-    except Exception as exc:
+    except Exception:
 
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=(
-                "LLM analysis failed: "
-                f"{str(exc)}"
-            ),
+            detail="LLM analysis failed",
         )
 
     # -----------------------------------------------------
@@ -336,14 +330,14 @@ def generate_ai_analysis(
                 )
             )
 
-        except Exception as exc:
+        except Exception:
 
             mitre_validation = {
                 "technique_id": mitre_id,
                 "name": None,
                 "description": None,
                 "valid": False,
-                "error": str(exc),
+                "error": "MITRE technique validation failed",
             }
 
     else:
@@ -396,16 +390,13 @@ def generate_ai_analysis(
         db.commit()
         db.refresh(analysis)
 
-    except Exception as exc:
+    except Exception:
 
         db.rollback()
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "Unable to save AI analysis: "
-                f"{str(exc)}"
-            ),
+            detail="Unable to save AI analysis",
         )
 
     # -----------------------------------------------------
