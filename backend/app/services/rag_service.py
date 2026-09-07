@@ -1438,10 +1438,9 @@ class RAGService:
                 )
             )
 
-        except Exception as exc:
+        except Exception:
             print(
-                "RAG retrieval failed: "
-                + str(exc)
+                "RAG retrieval failed"
             )
             return []
 
