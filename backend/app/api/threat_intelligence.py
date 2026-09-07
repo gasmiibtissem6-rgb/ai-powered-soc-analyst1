@@ -59,10 +59,10 @@ def check_ip(
             ip_address
         )
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
+            detail="Threat intelligence provider request failed",
         )
 
 
@@ -80,10 +80,10 @@ def analyze_text(
             request.text
         )
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
+            detail="Threat intelligence provider request failed",
         )
 
 
@@ -101,10 +101,10 @@ def virustotal_check_ip(
             ip_address
         )
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
+            detail="Threat intelligence provider request failed",
         )
 
 
@@ -122,10 +122,10 @@ def virustotal_check_domain(
             domain
         )
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
+            detail="Threat intelligence provider request failed",
         )
 
 
@@ -143,10 +143,10 @@ def virustotal_check_url(
             request.url
         )
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
+            detail="Threat intelligence provider request failed",
         )
 
 
@@ -164,10 +164,10 @@ def virustotal_check_hash(
             file_hash
         )
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
+            detail="Threat intelligence provider request failed",
         )
 
 
@@ -185,10 +185,10 @@ def otx_check_ip(
             ip_address
         )
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
+            detail="Threat intelligence provider request failed",
         )
 
 
@@ -206,10 +206,10 @@ def otx_check_domain(
             domain
         )
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
+            detail="Threat intelligence provider request failed",
         )
 
 
@@ -227,10 +227,10 @@ def otx_check_url(
             request.url
         )
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
+            detail="Threat intelligence provider request failed",
         )
 
 
@@ -248,10 +248,10 @@ def otx_check_hash(
             file_hash
         )
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
+            detail="Threat intelligence provider request failed",
         )
 
 
@@ -317,13 +317,10 @@ def analyze_incident_threat_intelligence(
             text
         )
 
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=(
-                "IOC extraction failed: "
-                f"{str(exc)}"
-            ),
+            detail="IOC extraction failed",
         )
 
     # -----------------------------------------------------
