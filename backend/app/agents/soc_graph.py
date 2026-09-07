@@ -198,10 +198,10 @@ def machine_learning_agent(
                 )
             )
 
-        except Exception as exc:
+        except Exception:
             errors[
                 "isolation_forest"
-            ] = str(exc)
+            ] = "Isolation Forest analysis failed"
 
     # =====================================================
     # 4. No usable ML input
@@ -433,12 +433,9 @@ def threat_intelligence_agent(
                 )
             )
 
-        except Exception as exc:
+        except Exception:
             print(
-                "Threat Intelligence IOC extraction "
-                f"failed for incident "
-                f"{incident_data.get('id')}: "
-                f"{str(exc)}"
+                "Threat Intelligence IOC extraction failed"
             )
 
             extracted = {
@@ -780,10 +777,9 @@ def investigation_agent(
             limit=3,
         )
 
-    except Exception as exc:
-
+    except Exception:
         print(
-            f"RAG search failed: {str(exc)}"
+            "RAG search failed"
         )
 
         rag_context = []
@@ -1111,14 +1107,13 @@ def investigation_agent(
                 )
             )
 
-        except Exception as exc:
-
+        except Exception:
             mitre_validation = {
                 "technique_id": mitre_id,
                 "name": None,
                 "description": None,
                 "valid": False,
-                "error": str(exc),
+                "error": "MITRE technique validation failed",
             }
 
     else:
