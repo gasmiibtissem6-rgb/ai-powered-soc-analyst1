@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -29,6 +30,14 @@ class UserResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CurrentUserResponse(BaseModel):
+    subject: str
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    roles: List[str]
+    source: str
 
 
 class TokenResponse(BaseModel):

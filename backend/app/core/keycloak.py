@@ -12,11 +12,12 @@ from app.core.config import settings
 class KeycloakTokenValidator:
     def __init__(self) -> None:
         self.issuer = settings.KEYCLOAK_ISSUER
+        self.audience = settings.KEYCLOAK_CLIENT_ID
 
         self.jwks_url = (
-    f"{settings.KEYCLOAK_URL}/realms/"
-    f"{settings.KEYCLOAK_REALM}/protocol/openid-connect/certs"
-)
+            f"{settings.KEYCLOAK_URL}/realms/"
+            f"{settings.KEYCLOAK_REALM}/protocol/openid-connect/certs"
+        )
 
         self.jwks_client = PyJWKClient(
             self.jwks_url
@@ -38,9 +39,7 @@ class KeycloakTokenValidator:
                 signing_key,
                 algorithms=["RS256"],
                 issuer=self.issuer,
-                options={
-                    "verify_aud": False,
-                },
+                audience=self.audience,
             )
 
         except (InvalidTokenError, PyJWKClientError) as exc:

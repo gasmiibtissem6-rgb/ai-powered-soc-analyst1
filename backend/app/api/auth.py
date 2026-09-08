@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user, require_admin
+from app.core.auth_principal import AuthPrincipal
+from app.core.security import get_current_principal, require_admin
 from app.database.session import get_db
-from app.models.user import User
 from app.schemas.auth import (
+    CurrentUserResponse,
     LoginRequest,
     RegisterRequest,
     TokenResponse,
@@ -27,7 +28,7 @@ router = APIRouter(
 def register(
     payload: RegisterRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: AuthPrincipal = Depends(require_admin),
 ):
     """
     Create a new SOC analyst account.
@@ -74,9 +75,17 @@ def login(
 
 @router.get(
     "/me",
-    response_model=UserResponse,
+    response_model=CurrentUserResponse,
 )
 def get_me(
-    current_user: User = Depends(get_current_user),
+    current_user: AuthPrincipal = Depends(
+        get_current_principal
+    ),
 ):
-    return current_user
+    return CurrentUserResponse(
+        subject=current_user.subject,
+        email=current_user.email,
+        full_name=current_user.full_name,
+        roles=current_user.roles,
+        source=current_user.source,
+    )
