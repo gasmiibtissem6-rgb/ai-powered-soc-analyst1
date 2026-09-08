@@ -1903,35 +1903,25 @@ def report_agent(
         ),
 
         "ml_probabilities": {
-
-            "BENIGN": (
+            "random_forest": (
                 ml_analysis.get(
-                    "benign_probability"
+                    "random_forest"
                 )
+                or {}
             ),
 
-            "DDoS": (
+            "xgboost": (
                 ml_analysis.get(
-                    "ddos_probability"
+                    "xgboost"
                 )
+                or {}
             ),
 
-            "PortScan": (
+            "isolation_forest": (
                 ml_analysis.get(
-                    "portscan_probability"
+                    "isolation_forest"
                 )
-            ),
-
-            "FTP-Patator": (
-                ml_analysis.get(
-                    "ftp_patator_probability"
-                )
-            ),
-
-            "SSH-Patator": (
-                ml_analysis.get(
-                    "ssh_patator_probability"
-                )
+                or {}
             ),
         },
 

@@ -22,10 +22,16 @@ class MetricsService:
             resolved_at - detected_at
 
         Values are returned in seconds.
+
+        Invalid negative MTTD/MTTR values are ignored.
         """
 
         mttd_seconds = None
         mttr_seconds = None
+
+        # --------------------------------------------------
+        # MTTD
+        # --------------------------------------------------
 
         if (
             incident.event_timestamp
@@ -36,10 +42,16 @@ class MetricsService:
                 - incident.event_timestamp
             )
 
-            mttd_seconds = max(
-                0.0,
-                delta.total_seconds(),
-            )
+            mttd_seconds = delta.total_seconds()
+
+            # An event cannot be detected before it occurs.
+            # Ignore invalid negative values.
+            if mttd_seconds < 0:
+                mttd_seconds = None
+
+        # --------------------------------------------------
+        # MTTR
+        # --------------------------------------------------
 
         if (
             incident.resolved_at
@@ -50,16 +62,17 @@ class MetricsService:
                 - incident.detected_at
             )
 
-            mttr_seconds = max(
-                0.0,
-                delta.total_seconds(),
-            )
+            mttr_seconds = delta.total_seconds()
+
+            # A resolution cannot happen before detection.
+            # Ignore invalid negative values.
+            if mttr_seconds < 0:
+                mttr_seconds = None
 
         return {
             "mttd_seconds": mttd_seconds,
             "mttr_seconds": mttr_seconds,
         }
-
 
     @staticmethod
     def calculate_quality_metrics(
@@ -113,7 +126,6 @@ class MetricsService:
             "true_positive_count": true_positive_count,
             "false_positive_rate": false_positive_rate,
         }
-
 
     @staticmethod
     def get_global_metrics(
@@ -184,7 +196,6 @@ class MetricsService:
             "average_mttr_seconds": average_mttr,
             **quality_metrics,
         }
-
 
     @staticmethod
     def get_severity_distribution(

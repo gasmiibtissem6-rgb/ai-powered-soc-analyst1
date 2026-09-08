@@ -554,7 +554,7 @@ class SOARService:
 
                 return action
 
-        # -------------------------------------------------
+                # -------------------------------------------------
         # Safety check for endpoint isolation
         # -------------------------------------------------
 
@@ -584,19 +584,21 @@ class SOARService:
                     raise
 
                 SOARService.log_action_event(
-    db=db,
-    action=action,
-    event_type="blocked_by_safety",
-    previous_status=previous_status,
-    new_status="blocked_by_safety",
-    details=action.result,
-)
+                    db=db,
+                    action=action,
+                    event_type="blocked_by_safety",
+                    previous_status=previous_status,
+                    new_status="blocked_by_safety",
+                    details=action.result,
+                )
 
-        return action
+                return action
 
-# -------------------------------------------------
-# Safety check for user disabling
-# -------------------------------------------------
+        # -------------------------------------------------
+        # Safety check for user disabling
+        # -------------------------------------------------
+
+
 
         if action.action_type == "disable_user":
 

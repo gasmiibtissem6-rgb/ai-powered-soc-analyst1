@@ -8,6 +8,8 @@ from app.api.agents import run_soc_workflow
 from app.core.ingestion_security import verify_ingestion_api_key
 from app.database.session import get_db
 from app.models.incident import Incident
+from app.schemas.alert import AlertCreate
+from app.services.alert_service import AlertService
 from app.services.correlation_service import CorrelationService
 from app.services.suricata_service import SuricataService
 
@@ -207,6 +209,16 @@ def receive_suricata_alert(
         incident = service.create_incident_from_alert(
             db=db,
             alert=alert,
+        )
+
+        AlertService.create_alert(
+            db=db,
+            alert_data=AlertCreate(
+                title=incident.title,
+                description=incident.description,
+                severity=incident.severity,
+                source=incident.source,
+            ),
         )
 
         CorrelationService.correlate_incident(

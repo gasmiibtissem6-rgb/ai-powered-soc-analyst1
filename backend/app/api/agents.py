@@ -411,31 +411,75 @@ def save_soc_report(
     # MACHINE LEARNING
     # -----------------------------------------------------
 
+    random_forest = (
+        ml_analysis.get("random_forest")
+        or {}
+    )
+
+    xgboost = (
+        ml_analysis.get("xgboost")
+        or {}
+    )
+
+    isolation_forest = (
+        ml_analysis.get("isolation_forest")
+        or {}
+    )
+
     ml_probabilities = {
+        "random_forest": {
+            "prediction": random_forest.get(
+                "prediction"
+            ),
+            "BENIGN": random_forest.get(
+                "benign_probability"
+            ),
+            "DDoS": random_forest.get(
+                "ddos_probability"
+            ),
+            "PortScan": random_forest.get(
+                "portscan_probability"
+            ),
+            "FTP-Patator": random_forest.get(
+                "ftp_patator_probability"
+            ),
+            "SSH-Patator": random_forest.get(
+                "ssh_patator_probability"
+            ),
+        },
 
+        "xgboost": {
+            "prediction": xgboost.get(
+                "prediction"
+            ),
+            "BENIGN": xgboost.get(
+                "benign_probability"
+            ),
+            "DDoS": xgboost.get(
+                "ddos_probability"
+            ),
+            "PortScan": xgboost.get(
+                "portscan_probability"
+            ),
+            "FTP-Patator": xgboost.get(
+                "ftp_patator_probability"
+            ),
+            "SSH-Patator": xgboost.get(
+                "ssh_patator_probability"
+            ),
+        },
 
-        "BENIGN": ml_analysis.get(
-            "benign_probability"
-        ),
-
-        "DDoS": ml_analysis.get(
-            "ddos_probability"
-        ),
-
-        "PortScan": ml_analysis.get(
-            "portscan_probability"
-        ),
-
-        "FTP-Patator": ml_analysis.get(
-            "ftp_patator_probability"
-        ),
-
-        "SSH-Patator": ml_analysis.get(
-            "ssh_patator_probability"
-
-        ),
-
-
+        "isolation_forest": {
+            "prediction": isolation_forest.get(
+                "prediction"
+            ),
+            "is_anomaly": isolation_forest.get(
+                "is_anomaly"
+            ),
+            "anomaly_score": isolation_forest.get(
+                "anomaly_score"
+            ),
+        },
     }
 
     # -----------------------------------------------------
@@ -1212,7 +1256,6 @@ def analyze_incident_with_agents(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
-
     incident = (
         db.query(Incident)
         .filter(
@@ -1227,7 +1270,7 @@ def analyze_incident_with_agents(
             detail="Incident not found",
         )
 
-        return run_soc_workflow(
+    return run_soc_workflow(
         db=db,
         incident=incident,
         request=request,

@@ -11,7 +11,8 @@ from app.models.incident import Incident
 from app.services.correlation_service import CorrelationService
 from app.services.wazuh_service import WazuhService
 
-
+from app.schemas.alert import AlertCreate
+from app.services.alert_service import AlertService
 router = APIRouter(
     prefix="/wazuh",
     tags=["Wazuh"],
@@ -234,7 +235,15 @@ def receive_wazuh_alert(
             db=db,
             alert=alert,
         )
-
+        AlertService.create_alert(
+            db=db,
+            alert_data=AlertCreate(
+                title=incident.title,
+                description=incident.description,
+                severity=incident.severity,
+                source=incident.source,
+            ),
+        )
         CorrelationService.correlate_incident(
             db=db,
             incident=incident,

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -16,7 +16,7 @@ class SOCReportBase(BaseModel):
     # Machine Learning
     ml_status: Optional[str] = None
     ml_prediction: Optional[str] = None
-    ml_probabilities: Optional[Dict[str, Optional[float]]] = None
+    ml_probabilities: Optional[Dict[str, Any]] = None
     ml_engine: Optional[str] = None
     ml_is_anomaly: Optional[bool] = None
     ml_anomaly_score: Optional[float] = None
