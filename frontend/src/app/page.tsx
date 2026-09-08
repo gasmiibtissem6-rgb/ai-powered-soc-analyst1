@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest } from "@/lib/api";
+import {
+  initKeycloak,
+  logoutFromKeycloak,
+} from "@/lib/keycloak-auth";
 
 import {
   Activity,
@@ -64,12 +68,11 @@ type DashboardMetrics = {
 };
 
 type CurrentUser = {
-  id: number;
-  email: string;
-  full_name: string;
-  role: string;
-  is_active: boolean;
-  created_at: string;
+  subject: string;
+  email: string | null;
+  full_name: string | null;
+  roles: string[];
+  source: string;
 };
 
 type Incident = {
@@ -351,62 +354,65 @@ export default function Home() {
 
   useEffect(() => {
     async function loadDashboard() {
-      const token = localStorage.getItem("access_token");
-
-      if (!token) {
-        router.replace("/login");
-        return;
-      }
-
       try {
+        const authenticated = await initKeycloak();
+
+        if (!authenticated) {
+          localStorage.removeItem("access_token");
+          localStorage.removeItem("soc_user");
+
+          router.replace("/login");
+          return;
+        }
+
         const userData =
-  await apiRequest<CurrentUser>("/auth/me");
+          await apiRequest<CurrentUser>("/auth/me");
 
-setCurrentUser(userData);
+        setCurrentUser(userData);
 
-try {
-  const healthData =
-    await apiRequest<{ status: string }>("/health");
+        try {
+          const healthData =
+            await apiRequest<{ status: string }>("/health");
 
-  setSystemHealthy(
-    healthData.status.toLowerCase() === "healthy"
-  );
-} catch {
-  setSystemHealthy(false);
-}
+          setSystemHealthy(
+            healthData.status.toLowerCase() === "healthy"
+          );
+        } catch {
+          setSystemHealthy(false);
+        }
+
         const [
-  dashboardMetrics,
-  incidentData,
-  analysisData,
-  soarData,
-  reportData,
-  alertData,
-] = await Promise.all([
-  apiRequest<DashboardMetrics>(
-    "/metrics/dashboard"
-  ),
-  apiRequest<Incident[]>(
-    "/incidents"
-  ),
-  apiRequest<AIAnalysis[]>(
-    "/ai-analysis"
-  ),
-  apiRequest<SOARAction[]>(
-    "/soar"
-  ),
-  apiRequest<SOCReport[]>(
-    "/reports"
-  ),
+          dashboardMetrics,
+          incidentData,
+          analysisData,
+          soarData,
+          reportData,
+          alertData,
+        ] = await Promise.all([
+          apiRequest<DashboardMetrics>(
+            "/metrics/dashboard"
+          ),
+          apiRequest<Incident[]>(
+            "/incidents"
+          ),
+          apiRequest<AIAnalysis[]>(
+            "/ai-analysis"
+          ),
+          apiRequest<SOARAction[]>(
+            "/soar"
+          ),
+          apiRequest<SOCReport[]>(
+            "/reports"
+          ),
+          apiRequest<SecurityAlert[]>("/alerts"),
+        ]);
 
-  apiRequest<SecurityAlert[]>("/alerts"),
-]);
-
-setMetrics(dashboardMetrics);
-setIncidents(incidentData);
-setAnalyses(analysisData);
-setSoarActions(soarData);
-setReports(reportData);
-setAlerts(alertData);
+        setMetrics(dashboardMetrics);
+        setIncidents(incidentData);
+        setAnalyses(analysisData);
+        setSoarActions(soarData);
+        setReports(reportData);
+        setAlerts(alertData);
 
         // ===============================================
         // LOAD TI FOR THE LATEST INCIDENT
@@ -453,18 +459,22 @@ setAlerts(alertData);
       }
     }
 
-    loadDashboard();
+    void loadDashboard();
   }, [router]);
 
   // =====================================================
   // AUTH
   // =====================================================
 
-  function handleLogout() {
+  async function handleLogout() {
     localStorage.removeItem("access_token");
     localStorage.removeItem("soc_user");
 
-    router.replace("/login");
+    try {
+      await logoutFromKeycloak();
+    } catch {
+      router.replace("/login");
+    }
   }
 
   // =====================================================
@@ -1086,9 +1096,9 @@ const latestPipelineIncident =
 </strong>
 
 <span>
-  {currentUser?.role
-    ? currentUser.role.toUpperCase()
-    : "UNKNOWN ROLE"}
+  {currentUser?.roles?.length
+  ? currentUser.roles.join(", ").toUpperCase()
+  : "ANALYST"}
 </span>
               </div>
             </div>

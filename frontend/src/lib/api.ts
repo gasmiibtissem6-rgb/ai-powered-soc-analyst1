@@ -1,3 +1,10 @@
+"use client";
+
+import {
+  getKeycloakToken,
+  refreshKeycloakToken,
+} from "./keycloak-auth";
+
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "https://soc.local";
 
@@ -13,18 +20,24 @@ export class ApiError extends Error {
 
 export async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<T> {
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem("access_token")
-      : null;
+  await refreshKeycloakToken();
 
   const headers = new Headers(options.headers);
 
   if (!headers.has("Content-Type") && options.body) {
     headers.set("Content-Type", "application/json");
   }
+
+  const keycloakToken = getKeycloakToken();
+
+  const legacyToken =
+    typeof window !== "undefined"
+      ? localStorage.getItem("access_token")
+      : null;
+
+  const token = keycloakToken ?? legacyToken;
 
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
