@@ -82,10 +82,18 @@ def triage_agent(
         )
     ).lower().strip()
 
+    attack_type = (
+        CorrelationService.classify_attack_type(
+            incident.get("title"),
+            incident.get("description"),
+        )
+    )
+
     triage = {
         "status": "triaged",
         "severity": severity,
         "priority": severity.upper(),
+        "attack_type": attack_type,
     }
 
     return {
