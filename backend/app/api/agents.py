@@ -13,14 +13,14 @@ from sqlalchemy.orm import Session
 
 from app.agents.soc_graph import soc_graph
 from app.core.config import settings
+from app.core.security import require_admin, require_analyst
 from app.database.session import get_db
-
 from app.models.ai_analysis import AIAnalysis
 from app.models.incident import Incident
 from app.models.report import SOCReport
 from app.models.soar_action import SOARAction
-from app.core.security import require_admin, require_analyst
 from app.models.user import User
+
 
 # =========================================================
 # ROUTER
@@ -101,8 +101,6 @@ def is_llm_rate_limit_error(exc: Exception) -> bool:
     )
 
 
-# =========================================================
-# SAVE AI ANALYSIS
 # =========================================================
 # SAVE AI ANALYSIS
 # =========================================================
@@ -344,8 +342,14 @@ def save_ai_analysis(
         db.commit()
         db.refresh(db_analysis)
 
-    except Exception:
+    except Exception as exc:
         db.rollback()
+
+        print(
+            f"AI ANALYSIS SAVE ERROR: "
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
 
         raise HTTPException(
             status_code=(
@@ -586,17 +590,19 @@ def save_soc_report(
         ml_probabilities=(
             ml_probabilities
         ),
+
         ml_engine=ml_analysis.get(
-    "engine"
-),
+            "engine"
+        ),
 
-ml_is_anomaly=ml_analysis.get(
-    "is_anomaly"
-),
+        ml_is_anomaly=ml_analysis.get(
+            "is_anomaly"
+        ),
 
-ml_anomaly_score=ml_analysis.get(
-    "anomaly_score"
-),
+        ml_anomaly_score=ml_analysis.get(
+            "anomaly_score"
+        ),
+
         mitre_technique=report.get(
             "mitre_technique",
             mitre_validation.get(
@@ -666,8 +672,14 @@ ml_anomaly_score=ml_analysis.get(
         db.commit()
         db.refresh(db_report)
 
-    except Exception:
+    except Exception as exc:
         db.rollback()
+
+        print(
+            f"SOC REPORT SAVE ERROR: "
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
 
         raise HTTPException(
             status_code=(
@@ -677,6 +689,8 @@ ml_anomaly_score=ml_analysis.get(
         )
 
     return db_report
+
+
 # =========================================================
 # SAVE SOAR ACTION
 # =========================================================
@@ -786,8 +800,14 @@ def save_soar_action(
         db.commit()
         db.refresh(db_action)
 
-    except Exception:
+    except Exception as exc:
         db.rollback()
+
+        print(
+            f"SOAR ACTION SAVE ERROR: "
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -895,7 +915,7 @@ def build_initial_state(
                 else None
             ),
 
-             "suricata_event": (
+            "suricata_event": (
                 suricata_event
             ),
         },
@@ -1162,7 +1182,7 @@ def run_soc_workflow(
         raise HTTPException(
             status_code=http_status,
             detail=detail,
-        )
+        ) from exc
 
     # -----------------------------------------------------
     # 5. Human interruption
@@ -1212,12 +1232,27 @@ def run_soc_workflow(
 
     except Exception as exc:
 
+        print(
+            "\n========== SOC RESULT PERSISTENCE ERROR ==========",
+            flush=True,
+        )
+        print(
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        print(
+            "==================================================\n",
+            flush=True,
+        )
+
         try:
             update_incident_workflow_status(
                 db=db,
                 incident=incident,
                 workflow_status="failed",
-                workflow_error="SOC workflow result persistence failed",
+                workflow_error=(
+                    "SOC workflow result persistence failed"
+                ),
             )
 
         except Exception:
@@ -1235,6 +1270,10 @@ def run_soc_workflow(
         workflow_status="completed",
         workflow_error=None,
     )
+
+    # -----------------------------------------------------
+    # 8. Final response
+    # -----------------------------------------------------
 
     return build_completed_response(
         result=result,
@@ -1309,11 +1348,11 @@ def resume_soc_workflow(
             config
         )
 
-    except Exception:
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unable to read workflow state",
-        )
+        ) from exc
 
     # -----------------------------------------------------
     # 2. Check workflow exists
@@ -1437,6 +1476,19 @@ def resume_soc_workflow(
 
     except Exception as exc:
 
+        print(
+            "\n========== SOC GRAPH RESUME ERROR ==========",
+            flush=True,
+        )
+        print(
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        print(
+            "============================================\n",
+            flush=True,
+        )
+
         rate_limited = is_llm_rate_limit_error(
             exc
         )
@@ -1472,7 +1524,7 @@ def resume_soc_workflow(
         raise HTTPException(
             status_code=http_status,
             detail=detail,
-        )
+        ) from exc
 
     # -----------------------------------------------------
     # 8. Check another interruption
@@ -1522,12 +1574,27 @@ def resume_soc_workflow(
 
     except Exception as exc:
 
+        print(
+            "\n========== SOC RESULT PERSISTENCE ERROR ==========",
+            flush=True,
+        )
+        print(
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        print(
+            "==================================================\n",
+            flush=True,
+        )
+
         try:
             update_incident_workflow_status(
                 db=db,
                 incident=db_incident,
                 workflow_status="failed",
-                workflow_error="SOC workflow result persistence failed",
+                workflow_error=(
+                    "SOC workflow result persistence failed"
+                ),
             )
 
         except Exception:

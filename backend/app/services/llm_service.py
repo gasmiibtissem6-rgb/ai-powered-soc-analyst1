@@ -10,11 +10,12 @@ from app.core.secrets import secret_manager
 class LLMService:
 
     def __init__(self):
-        self.client = OpenAI(
-            api_key=secret_manager.get("GROQ_API_KEY"),
-            base_url=settings.LLM_BASE_URL,
-        )
-
+     self.client = OpenAI(
+        api_key=secret_manager.get("GROQ_API_KEY"),
+        base_url=settings.LLM_BASE_URL,
+        timeout=60.0,
+        max_retries=0,
+    )
     def analyze_incident(
         self,
         title: str,
