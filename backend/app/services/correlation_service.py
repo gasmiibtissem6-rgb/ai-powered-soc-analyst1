@@ -172,7 +172,166 @@ class CorrelationService:
         ):
             return False
 
+
         return False
+
+    # =====================================================
+    # CLASSIFY ATTACK TYPE
+    # =====================================================
+
+    @staticmethod
+    def classify_attack_type(
+        title: Optional[str],
+        description: Optional[str] = None,
+    ) -> str:
+        """
+        Classify an incident using the attack categories
+        required by the SOC specification.
+
+        This detailed classification is intentionally kept
+        separate from classify_activity(), which is used
+        for broad multi-source correlation.
+        """
+
+        text = (
+            f"{title or ''} "
+            f"{description or ''}"
+        ).lower()
+
+        attack_patterns = (
+            (
+                "credential_stuffing",
+                (
+                    "credential stuffing",
+                    "credential reuse",
+                    "stolen credentials",
+                ),
+            ),
+            (
+                "password_spraying",
+                (
+                    "password spraying",
+                    "password spray",
+                ),
+            ),
+            (
+                "brute_force",
+                (
+                    "brute force",
+                    "multiple failed password",
+                    "repeated failed login",
+                    "password guessing",
+                    "ssh-patator",
+                    "ftp-patator",
+                ),
+            ),
+            (
+                "sql_injection",
+                (
+                    "sql injection",
+                    "sqli",
+                    "union select",
+                ),
+            ),
+            (
+                "xss",
+                (
+                    "cross-site scripting",
+                    "cross site scripting",
+                    "xss",
+                ),
+            ),
+            (
+                "rce",
+                (
+                    "remote code execution",
+                    "command injection",
+                    "rce exploit",
+                ),
+            ),
+            (
+                "ransomware",
+                (
+                    "ransomware",
+                    "file encryption",
+                    "mass encryption",
+                ),
+            ),
+            (
+                "malware",
+                (
+                    "malware",
+                    "trojan",
+                    "virus",
+                    "backdoor",
+                ),
+            ),
+            (
+                "port_scan",
+                (
+                    "port scan",
+                    "tcp syn scan",
+                    "nmap",
+                    "network scan",
+                ),
+            ),
+            (
+                "ddos",
+                (
+                    "ddos",
+                    "distributed denial of service",
+                    "distributed denial-of-service",
+                ),
+            ),
+            (
+                "privilege_escalation",
+                (
+                    "privilege escalation",
+                    "elevation of privilege",
+                ),
+            ),
+            (
+                "lateral_movement",
+                (
+                    "lateral movement",
+                    "remote service movement",
+                ),
+            ),
+            (
+                "data_exfiltration",
+                (
+                    "data exfiltration",
+                    "data exfil",
+                    "exfiltration",
+                ),
+            ),
+            (
+                "insider_threat",
+                (
+                    "insider threat",
+                    "malicious insider",
+                ),
+            ),
+            (
+                "command_and_control",
+                (
+                    "command and control",
+                    "command-and-control",
+                    "c2 beacon",
+                    "c2 communication",
+                    "c2 traffic",
+                ),
+            ),
+        )
+
+        for attack_type, keywords in attack_patterns:
+            if any(
+                keyword in text
+                for keyword in keywords
+            ):
+                return attack_type
+
+        return "unknown"
 
     # =====================================================
     # FIND RELATED INCIDENT
