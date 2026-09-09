@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -12,6 +12,7 @@ from app.schemas.alert import AlertCreate
 from app.services.alert_service import AlertService
 from app.services.correlation_service import CorrelationService
 from app.services.suricata_service import SuricataService
+from app.utils.datetime_utils import utc_now
 
 
 router = APIRouter(
@@ -36,7 +37,7 @@ def find_recent_duplicate(
     for repeated equivalent network alerts.
     """
 
-    created_after = datetime.utcnow() - timedelta(
+    created_after = utc_now() - timedelta(
         minutes=window_minutes
     )
 

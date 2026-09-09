@@ -51,6 +51,7 @@ class VaultService:
         response = self.client.secrets.kv.v2.read_secret_version(
             path=self.secret_path,
             mount_point=self.mount_point,
+            raise_on_deleted_version=True,
         )
 
         return response["data"]["data"]

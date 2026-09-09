@@ -1,4 +1,3 @@
-from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
@@ -13,6 +12,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.database.session import Base
+from app.utils.datetime_utils import utc_now
 
 
 class SOCReport(Base):
@@ -189,6 +189,6 @@ class SOCReport(Base):
 
     created_at = Column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now,
         nullable=False,
     )

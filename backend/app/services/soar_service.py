@@ -1,4 +1,3 @@
-from datetime import datetime
 from ipaddress import ip_address
 from typing import Optional
 
@@ -9,6 +8,7 @@ from app.models.soar_action import SOARAction
 from app.models.soar_action_log import SOARActionLog
 from app.schemas.soar_action import SOARActionCreate
 from app.services.soar_executor_service import SOARExecutorService
+from app.utils.datetime_utils import utc_now
 
 class SOARService:
 
@@ -658,7 +658,7 @@ class SOARService:
 
             elif execution_result.get("executed") is True:
                 action.status = "executed"
-                action.executed_at = datetime.utcnow()
+                action.executed_at = utc_now()
 
             else:
                 action.status = "completed"

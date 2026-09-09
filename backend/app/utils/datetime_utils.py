@@ -2,6 +2,21 @@ from datetime import datetime, timezone
 from typing import Optional
 
 
+def utc_now() -> datetime:
+    """
+    Return the current time as a naive UTC datetime.
+
+    The application stores timestamps in SQLAlchemy
+    DateTime columns without timezone information,
+    so UTC is normalized before persistence.
+    """
+
+    return (
+        datetime.now(timezone.utc)
+        .replace(tzinfo=None)
+    )
+
+
 def parse_iso8601_utc(
     value: Optional[str],
 ) -> Optional[datetime]:
@@ -35,9 +50,7 @@ def parse_iso8601_utc(
                 parsed.astimezone(
                     timezone.utc
                 )
-                .replace(
-                    tzinfo=None
-                )
+                .replace(tzinfo=None)
             )
 
         return parsed

@@ -1,9 +1,9 @@
-from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.database.session import Base
+from app.utils.datetime_utils import utc_now
 
 
 class SOARAction(Base):
@@ -32,4 +32,4 @@ class SOARAction(Base):
 
     executed_at = Column(DateTime, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)

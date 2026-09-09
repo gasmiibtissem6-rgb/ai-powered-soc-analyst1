@@ -5,6 +5,7 @@ from sqlalchemy import DateTime, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.session import Base
+from app.utils.datetime_utils import utc_now
 
 
 class Incident(Base):
@@ -117,7 +118,7 @@ class Incident(Base):
 
     detected_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now,
         nullable=False,
     )
 
@@ -128,6 +129,6 @@ class Incident(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now,
         nullable=False,
     )

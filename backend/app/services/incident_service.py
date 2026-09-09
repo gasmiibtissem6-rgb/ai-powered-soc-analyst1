@@ -7,7 +7,7 @@ from app.schemas.incident import (
     IncidentCreate,
     IncidentUpdate,
 )
-from datetime import datetime
+from app.utils.datetime_utils import utc_now
 
 class IncidentService:
 
@@ -91,7 +91,7 @@ class IncidentService:
             and incident.resolved_at is None
         ):
             incident.resolved_at = (
-                datetime.utcnow()
+                utc_now()
             )
 
         elif (

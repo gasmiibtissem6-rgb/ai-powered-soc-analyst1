@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
 from uuid import uuid4
 
@@ -6,6 +6,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.models.incident import Incident
+from app.utils.datetime_utils import utc_now
 
 
 class CorrelationService:
@@ -194,7 +195,7 @@ class CorrelationService:
         """
 
         created_after = (
-            datetime.utcnow()
+            utc_now()
             - timedelta(
                 minutes=window_minutes
             )

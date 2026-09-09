@@ -1,4 +1,3 @@
-from datetime import datetime
 
 from sqlalchemy import (
     Column,
@@ -10,6 +9,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.database.session import Base
+from app.utils.datetime_utils import utc_now
 
 
 class SOARActionLog(Base):
@@ -63,6 +63,6 @@ class SOARActionLog(Base):
 
     created_at = Column(
         DateTime,
-        default=datetime.utcnow,
+        default=utc_now,
         nullable=False,
     )

@@ -1,4 +1,6 @@
 from datetime import datetime
+
+from app.utils.datetime_utils import utc_now
 from unittest.mock import MagicMock
 
 from app.models.incident import Incident
@@ -14,7 +16,7 @@ def build_incident(status="open"):
         severity="high",
         status=status,
         source="test",
-        detected_at=datetime.utcnow(),
+        detected_at=utc_now(),
     )
 
 
@@ -79,7 +81,7 @@ def test_reopened_incident_clears_resolved_at():
     incident = build_incident(
         status="resolved"
     )
-    incident.resolved_at = datetime.utcnow()
+    incident.resolved_at = utc_now()
 
     db = build_mock_db(incident)
 
@@ -102,7 +104,7 @@ def test_update_without_status_keeps_resolved_at():
         status="resolved"
     )
 
-    original_resolved_at = datetime.utcnow()
+    original_resolved_at = utc_now()
     incident.resolved_at = original_resolved_at
 
     db = build_mock_db(incident)
