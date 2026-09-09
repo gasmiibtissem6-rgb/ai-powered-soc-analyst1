@@ -62,6 +62,16 @@ class Settings(BaseSettings):
     TEAMS_WEBHOOK_URL: str = ""
 
     # =====================================================
+    # SHUFFLE SOAR
+    # =====================================================
+
+    SHUFFLE_ENABLED: bool = False
+    SHUFFLE_WEBHOOK_URL: str = ""
+    SHUFFLE_WEBHOOK_SECRET: str = ""
+    SHUFFLE_VERIFY_SSL: bool = True
+    SHUFFLE_TIMEOUT_SECONDS: int = 15
+
+    # =====================================================
     # VAULT / SECRET MANAGEMENT
     # =====================================================
 

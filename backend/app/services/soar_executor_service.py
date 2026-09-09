@@ -5,6 +5,7 @@ import requests
 
 from app.core.config import settings
 from app.core.secrets import secret_manager
+from app.services.shuffle_service import ShuffleService
 
 
 class SOARExecutorService:
@@ -29,6 +30,7 @@ class SOARExecutorService:
     def execute(
         action_type: str,
         target: str,
+        incident_id: int | None = None,
     ) -> Dict[str, Any]:
         """
         Execute one SOAR action.
@@ -75,27 +77,32 @@ class SOARExecutorService:
 
         if normalized_action == "create_ticket":
             return SOARExecutorService.create_ticket(
-                normalized_target
+                normalized_target,
+                incident_id=incident_id,
             )
 
         if normalized_action == "block_ip":
             return SOARExecutorService.block_ip(
-                normalized_target
+                normalized_target,
+                incident_id=incident_id,
             )
 
         if normalized_action == "isolate_endpoint":
             return SOARExecutorService.isolate_endpoint(
-                normalized_target
+                normalized_target,
+                incident_id=incident_id,
             )
 
         if normalized_action == "disable_user":
             return SOARExecutorService.disable_user(
-                normalized_target
+                normalized_target,
+                incident_id=incident_id,
             )
 
         if normalized_action == "send_notification":
             return SOARExecutorService.send_notification(
-                normalized_target
+                normalized_target,
+                incident_id=incident_id,
             )
 
         return {
@@ -134,6 +141,7 @@ class SOARExecutorService:
     @staticmethod
     def create_ticket(
         target: str,
+        incident_id: int | None = None,
     ) -> Dict[str, Any]:
         """
         Prototype ticket creation.
@@ -152,6 +160,13 @@ class SOARExecutorService:
                     "simulated successfully."
                 ),
             }
+
+        if settings.SHUFFLE_ENABLED:
+            return ShuffleService.trigger_workflow(
+                action_type="create_ticket",
+                target=target,
+                incident_id=incident_id,
+            )
 
         return {
             "success": True,
@@ -173,6 +188,7 @@ class SOARExecutorService:
     @staticmethod
     def block_ip(
         target: str,
+        incident_id: int | None = None,
     ) -> Dict[str, Any]:
         """
         Prepare execution of an IP blocking action.
@@ -220,6 +236,13 @@ class SOARExecutorService:
                 ),
             }
 
+        if settings.SHUFFLE_ENABLED:
+            return ShuffleService.trigger_workflow(
+                action_type="block_ip",
+                target=target,
+                incident_id=incident_id,
+            )
+
         return {
             "success": False,
             "executed": False,
@@ -241,6 +264,7 @@ class SOARExecutorService:
     @staticmethod
     def isolate_endpoint(
         target: str,
+        incident_id: int | None = None,
     ) -> Dict[str, Any]:
         """
         Prepare endpoint isolation.
@@ -288,6 +312,13 @@ class SOARExecutorService:
                 ),
             }
 
+        if settings.SHUFFLE_ENABLED:
+            return ShuffleService.trigger_workflow(
+                action_type="isolate_endpoint",
+                target=target,
+                incident_id=incident_id,
+            )
+
         return {
             "success": False,
             "executed": False,
@@ -309,6 +340,7 @@ class SOARExecutorService:
     @staticmethod
     def disable_user(
         target: str,
+        incident_id: int | None = None,
     ) -> Dict[str, Any]:
         """
         Prepare disabling a user account.
@@ -355,6 +387,13 @@ class SOARExecutorService:
                     "SOAR_ENABLE_DISABLE_USER."
                 ),
             }
+
+        if settings.SHUFFLE_ENABLED:
+            return ShuffleService.trigger_workflow(
+                action_type="disable_user",
+                target=target,
+                incident_id=incident_id,
+            )
 
         return {
             "success": False,
@@ -408,6 +447,7 @@ class SOARExecutorService:
     @staticmethod
     def send_notification(
         target: str,
+        incident_id: int | None = None,
     ) -> Dict[str, Any]:
         """
         Send a SOC notification to Slack or Microsoft Teams.
@@ -468,6 +508,13 @@ class SOARExecutorService:
                     "SOAR_ENABLE_SEND_NOTIFICATION."
                 ),
             }
+
+        if settings.SHUFFLE_ENABLED:
+            return ShuffleService.trigger_workflow(
+                action_type="send_notification",
+                target=target,
+                incident_id=incident_id,
+            )
 
         # =================================================
         # SELECT PROVIDER

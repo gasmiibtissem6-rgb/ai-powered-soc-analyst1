@@ -118,6 +118,10 @@ services:
       - ./backend:/app
       - ./data:/data
 
+    networks:
+      - default
+      - shuffle
+
     labels:
       - "traefik.enable=true"
 
@@ -225,3 +229,8 @@ volumes:
   grafana_data:
   keycloak_data:
   qdrant_data:
+
+networks:
+  shuffle:
+    external: true
+    name: shuffle-soar_shuffle

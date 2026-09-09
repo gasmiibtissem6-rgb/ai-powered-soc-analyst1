@@ -642,6 +642,7 @@ class SOARService:
         execution_result = SOARExecutorService.execute(
             action_type=action.action_type,
             target=action.target,
+            incident_id=action.incident_id,
         )
 
         action.result = execution_result
