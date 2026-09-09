@@ -751,6 +751,11 @@ def investigation_agent(
         {},
     )
 
+    triage = state.get(
+        "triage",
+        {},
+    )
+
     correlated_incidents = state.get(
         "correlated_incidents",
         [],
@@ -1093,7 +1098,16 @@ def investigation_agent(
     # =====================================================
 
     investigation_context = (
-        rag_context
+        [
+            {
+                "source": "triage",
+                "attack_type": triage.get(
+                    "attack_type",
+                    "unknown",
+                ),
+            }
+        ]
+        + rag_context
         + ml_context
         + correlation_context
         + [
@@ -1818,6 +1832,11 @@ def report_agent(
         {},
     )
 
+    triage = state.get(
+        "triage",
+        {},
+    )
+
     investigation = state.get(
         "investigation",
         {},
@@ -1879,6 +1898,13 @@ def report_agent(
         "title": (
             incident.get(
                 "title"
+            )
+        ),
+
+        "attack_type": (
+            triage.get(
+                "attack_type",
+                "unknown",
             )
         ),
 
