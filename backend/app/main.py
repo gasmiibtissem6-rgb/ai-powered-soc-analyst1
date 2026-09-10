@@ -41,6 +41,7 @@ from app.services.metrics_service import MetricsService
 from app.services.audit_service import AuditService
 from app.core.security import decode_any_access_token
 from app.services.workflow_retry_service import workflow_retry_loop
+from app.services.vault_token_renewal_service import vault_token_renewal_loop
 
 
 # =========================================================
@@ -53,17 +54,26 @@ async def lifespan(app: FastAPI):
         workflow_retry_loop()
     )
 
+    vault_renewal_task = asyncio.create_task(
+        vault_token_renewal_loop()
+    )
+
     try:
         yield
 
     finally:
         retry_task.cancel()
+        vault_renewal_task.cancel()
 
-        try:
-            await retry_task
+        for task in [
+            retry_task,
+            vault_renewal_task,
+        ]:
+            try:
+                await task
 
-        except asyncio.CancelledError:
-            pass
+            except asyncio.CancelledError:
+                pass
 
 
 # =========================================================

@@ -36,6 +36,23 @@ class VaultService:
         except Exception:
             return False
 
+    def renew_token(self) -> bool:
+        """
+        Renew the current Vault token lease.
+
+        Returns True when the renewal succeeds.
+        """
+        if self.client is None:
+            return False
+
+        try:
+            response = self.client.auth.token.renew_self()
+            auth = response.get("auth", {})
+            return bool(auth.get("client_token"))
+
+        except Exception:
+            return False
+
     def get_secrets(self) -> Dict[str, Any]:
         if self.client is None:
             raise RuntimeError(
