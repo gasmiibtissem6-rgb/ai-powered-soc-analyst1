@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # =====================================================
 
     DATABASE_URL: str
+    DATABASE_ECHO: bool = False
     REDIS_URL: str = "redis://localhost:6379/0"
     QDRANT_URL: str = "http://localhost:6333"
 
