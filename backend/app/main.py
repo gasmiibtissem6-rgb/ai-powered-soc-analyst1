@@ -84,8 +84,18 @@ app.add_middleware(
         if origin.strip()
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=[
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE",
+        "OPTIONS",
+    ],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-SOC-Ingestion-Key",
+    ],
 )
 
 # =========================================================
