@@ -165,7 +165,7 @@ services:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
 
     ports:
-      - "3000:3000"
+      - "192.168.66.149:3000:3000"
 
     depends_on:
       - prometheus
