@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     VAULT_MOUNT_POINT: str = "secret"
     VAULT_SECRET_PATH: str = "soc-backend"
 
+    TRUSTED_HOSTS: str = (
+        "soc.local,localhost,127.0.0.1,testserver"
+    )
+
     # =====================================================
     # PYDANTIC SETTINGS
     # =====================================================

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.responses import Response
-
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from app.api import agents
 from app.api import analyst
 from app.api import metrics
@@ -75,6 +75,15 @@ app = FastAPI(
     description="Backend API for the intelligent SOC platform",
     version="1.0.0",
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=[
+    host.strip()
+    for host in settings.TRUSTED_HOSTS.split(",")
+    if host.strip()
+],
 )
 app.add_middleware(
     CORSMiddleware,
