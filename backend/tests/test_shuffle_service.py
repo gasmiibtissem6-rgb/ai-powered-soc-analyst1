@@ -130,5 +130,5 @@ def test_shuffle_accepts_non_json_response(
 
     assert result["success"] is True
     assert result["response"] == {
-        "raw_response": "workflow accepted"
+        "status": "accepted"
     }

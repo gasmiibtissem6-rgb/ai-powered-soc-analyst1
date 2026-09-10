@@ -67,7 +67,7 @@ class ShuffleService:
 
             response.raise_for_status()
 
-        except requests.RequestException as exc:
+        except requests.RequestException:
             return {
                 "success": False,
                 "executed": False,
@@ -75,14 +75,13 @@ class ShuffleService:
                 "message": "Shuffle workflow trigger failed.",
                 "action_type": action_type,
                 "target": target,
-                "error": str(exc),
             }
 
         try:
             response_data = response.json()
         except ValueError:
             response_data = {
-                "raw_response": response.text,
+                "status": "accepted",
             }
 
         return {
