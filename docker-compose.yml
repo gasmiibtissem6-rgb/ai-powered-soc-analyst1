@@ -9,9 +9,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
 
-    ports:
-      - "5432:5432"
-
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -30,9 +27,6 @@ services:
     image: redis:7-alpine
     container_name: soc-redis
     restart: unless-stopped
-
-    ports:
-      - "6379:6379"
 
     volumes:
       - redis_data:/data
@@ -54,9 +48,6 @@ services:
     image: qdrant/qdrant:v1.15.4
     container_name: soc-qdrant
     restart: unless-stopped
-
-    ports:
-      - "6333:6333"
 
     volumes:
       - qdrant_data:/qdrant/storage
