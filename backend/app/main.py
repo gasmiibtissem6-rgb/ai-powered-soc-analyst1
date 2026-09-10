@@ -38,6 +38,8 @@ from app.observability.prometheus import (
     TRUE_POSITIVE_COUNT,
 )
 from app.services.metrics_service import MetricsService
+from app.services.audit_service import AuditService
+from app.core.security import decode_any_access_token
 from app.services.workflow_retry_service import workflow_retry_loop
 
 
@@ -114,6 +116,86 @@ async def prometheus_middleware(
         method=request.method,
         path=request.url.path,
     ).observe(duration)
+
+    return response
+
+
+# =========================================================
+# SECURITY AUDIT MIDDLEWARE
+# =========================================================
+
+@app.middleware("http")
+async def security_audit_middleware(
+    request: Request,
+    call_next,
+):
+    response = await call_next(request)
+
+    if response.status_code not in {401, 403}:
+        return response
+
+    # /auth/login already records auth.login_failed itself.
+    if (
+        request.url.path == "/auth/login"
+        and response.status_code == 401
+    ):
+        return response
+
+    actor_subject = None
+    actor_source = None
+    actor_email = None
+
+    authorization = request.headers.get(
+        "authorization",
+        ""
+    )
+
+    if authorization.lower().startswith("bearer "):
+        token = authorization.split(
+            " ",
+            1,
+        )[1].strip()
+
+        try:
+            principal = decode_any_access_token(token)
+            actor_subject = principal.subject
+            actor_source = principal.source
+            actor_email = principal.email
+        except Exception:
+            pass
+
+    db = SessionLocal()
+
+    try:
+        AuditService.log_event(
+            db,
+            event_type=(
+                "security.authentication_failed"
+                if response.status_code == 401
+                else "security.access_denied"
+            ),
+            outcome=(
+                "failure"
+                if response.status_code == 401
+                else "denied"
+            ),
+            actor_subject=actor_subject,
+            actor_source=actor_source,
+            actor_email=actor_email,
+            resource_type="api",
+            request_method=request.method,
+            request_path=request.url.path,
+            client_ip=(
+                request.client.host
+                if request.client
+                else None
+            ),
+            details={
+                "status_code": response.status_code,
+            },
+        )
+    finally:
+        db.close()
 
     return response
 

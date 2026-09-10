@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.auth_principal import AuthPrincipal
@@ -12,6 +12,8 @@ from app.schemas.auth import (
     UserResponse,
 )
 from app.services.auth_service import AuthService
+from app.services.audit_service import AuditService
+from app.models.user import User
 
 
 router = APIRouter(
@@ -27,6 +29,7 @@ router = APIRouter(
 )
 def register(
     payload: RegisterRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: AuthPrincipal = Depends(require_admin),
 ):
@@ -37,13 +40,59 @@ def register(
     Newly created accounts receive the analyst role.
     """
     try:
-        return AuthService.register(
+        user = AuthService.register(
             db=db,
             full_name=payload.full_name,
             email=payload.email,
             password=payload.password,
         )
+
+        AuditService.log_event(
+            db,
+            event_type="auth.user_registered",
+            outcome="success",
+            actor_subject=current_user.subject,
+            actor_source=current_user.source,
+            actor_email=current_user.email,
+            resource_type="user",
+            resource_id=str(user.id),
+            request_method=request.method,
+            request_path=request.url.path,
+            client_ip=(
+                request.client.host
+                if request.client
+                else None
+            ),
+            details={
+                "created_user_email": user.email,
+                "created_user_role": user.role,
+            },
+        )
+
+        return user
+
     except ValueError as error:
+        AuditService.log_event(
+            db,
+            event_type="auth.user_registration_failed",
+            outcome="failure",
+            actor_subject=current_user.subject,
+            actor_source=current_user.source,
+            actor_email=current_user.email,
+            resource_type="user",
+            request_method=request.method,
+            request_path=request.url.path,
+            client_ip=(
+                request.client.host
+                if request.client
+                else None
+            ),
+            details={
+                "target_email": payload.email,
+                "reason": str(error),
+            },
+        )
+
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(error),
@@ -56,6 +105,7 @@ def register(
 )
 def login(
     payload: LoginRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     result = AuthService.login(
@@ -65,10 +115,55 @@ def login(
     )
 
     if result is None:
+        AuditService.log_event(
+            db,
+            event_type="auth.login_failed",
+            outcome="failure",
+            actor_source="internal",
+            actor_email=payload.email,
+            request_method=request.method,
+            request_path=request.url.path,
+            client_ip=(
+                request.client.host
+                if request.client
+                else None
+            ),
+            details={
+                "reason": "invalid_credentials_or_inactive_user",
+            },
+        )
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
+
+    user = (
+        db.query(User)
+        .filter(User.email == payload.email)
+        .first()
+    )
+
+    AuditService.log_event(
+        db,
+        event_type="auth.login_success",
+        outcome="success",
+        actor_subject=(
+            str(user.id)
+            if user
+            else None
+        ),
+        actor_source="internal",
+        actor_email=payload.email,
+        resource_type="session",
+        request_method=request.method,
+        request_path=request.url.path,
+        client_ip=(
+            request.client.host
+            if request.client
+            else None
+        ),
+    )
 
     return result
 

@@ -6,6 +6,7 @@ from sqlalchemy import pool
 from alembic import context
 
 from app.database.session import Base
+from app.core.config import settings
 
 # Import ALL application models so Alembic can see them
 from app.models import (
@@ -16,6 +17,7 @@ from app.models import (
     SOCReport,
     SOARAction,
     SOARActionLog,
+    AuditLog,
 )
 
 
@@ -66,7 +68,7 @@ def run_migrations_offline() -> None:
     """
     Run migrations in offline mode.
     """
-    url = config.get_main_option("sqlalchemy.url")
+    url = settings.DATABASE_URL
 
     context.configure(
     url=url,
@@ -85,8 +87,11 @@ def run_migrations_online() -> None:
     """
     Run migrations in online mode.
     """
+    configuration = config.get_section(config.config_ini_section, {})
+    configuration["sqlalchemy.url"] = settings.DATABASE_URL
+
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
