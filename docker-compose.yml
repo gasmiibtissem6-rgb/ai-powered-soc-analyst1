@@ -97,7 +97,7 @@ services:
       VAULT_ADDR: http://vault:8200
       VAULT_TOKEN: ${VAULT_BACKEND_TOKEN}
       KEYCLOAK_URL: http://keycloak:8080
-      KEYCLOAK_ISSUER: http://localhost:8080/realms/soc
+      KEYCLOAK_ISSUER: http://192.168.66.149:8080/realms/soc
       KEYCLOAK_REALM: soc
       KEYCLOAK_CLIENT_ID: soc-backend
     ports:
@@ -181,6 +181,7 @@ services:
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_HOSTNAME: http://192.168.66.149:8080
 
     volumes:
       - keycloak_data:/opt/keycloak/data
