@@ -1,3 +1,5 @@
+import logging
+
 from datetime import timedelta
 from typing import Any
 
@@ -14,6 +16,9 @@ from app.services.wazuh_service import WazuhService
 from app.schemas.alert import AlertCreate
 from app.services.alert_service import AlertService
 from app.utils.datetime_utils import utc_now
+
+
+logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/wazuh",
     tags=["Wazuh"],
@@ -115,14 +120,8 @@ def receive_wazuh_alert(
         )
 
     except Exception:
-        print(
-            "\n========== WAZUH NORMALIZATION ERROR =========="
-        )
-        print(
+        logger.error(
             "Unable to normalize Wazuh alert"
-        )
-        print(
-            "===============================================\n"
         )
 
         raise HTTPException(
@@ -142,14 +141,8 @@ def receive_wazuh_alert(
         )
 
     except Exception:
-        print(
-            "\n========== WAZUH DEDUP ERROR =========="
-        )
-        print(
+        logger.error(
             "Unable to check Wazuh incident deduplication"
-        )
-        print(
-            "=======================================\n"
         )
 
         raise HTTPException(
@@ -252,14 +245,8 @@ def receive_wazuh_alert(
         )
 
     except Exception:
-        print(
-            "\n========== WAZUH INCIDENT ERROR =========="
-        )
-        print(
+        logger.error(
             "Unable to create/correlate incident from Wazuh alert"
-        )
-        print(
-            "==========================================\n"
         )
 
         raise HTTPException(
@@ -285,14 +272,8 @@ def receive_wazuh_alert(
         )
 
     except Exception:
-        print(
-            "\n========== WAZUH CORRELATION ERROR =========="
-        )
-        print(
+        logger.error(
             "Unable to determine correlation workflow state"
-        )
-        print(
-            "============================================\n"
         )
 
         raise HTTPException(
@@ -316,14 +297,8 @@ def receive_wazuh_alert(
             )
 
         except Exception:
-            print(
-                "\n========== WAZUH CORRELATION STATUS ERROR =========="
-            )
-            print(
-                "Unable to mark incident as correlated"
-            )
-            print(
-                "===================================================\n"
+            logger.error(
+                "Unable to mark Wazuh incident as correlated"
             )
 
             raise HTTPException(
@@ -410,14 +385,8 @@ def receive_wazuh_alert(
         )
 
     except Exception:
-        print(
-            "\n========== WAZUH WORKFLOW ERROR =========="
-        )
-        print(
-            "SOC workflow could not be completed"
-        )
-        print(
-            "==========================================\n"
+        logger.error(
+            "Wazuh SOC workflow could not be completed"
         )
 
         # IMPORTANT:

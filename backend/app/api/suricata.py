@@ -1,3 +1,5 @@
+import logging
+
 from datetime import timedelta
 from typing import Any
 
@@ -13,6 +15,9 @@ from app.services.alert_service import AlertService
 from app.services.correlation_service import CorrelationService
 from app.services.suricata_service import SuricataService
 from app.utils.datetime_utils import utc_now
+
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(
@@ -111,14 +116,8 @@ def receive_suricata_alert(
         )
 
     except Exception:
-        print(
-            "\n========== SURICATA NORMALIZATION ERROR =========="
-        )
-        print(
+        logger.error(
             "Unable to normalize Suricata alert"
-        )
-        print(
-            "==================================================\n"
         )
 
         raise HTTPException(
@@ -138,14 +137,8 @@ def receive_suricata_alert(
         )
 
     except Exception:
-        print(
-            "\n========== SURICATA DEDUP ERROR =========="
-        )
-        print(
+        logger.error(
             "Unable to check Suricata incident deduplication"
-        )
-        print(
-            "==========================================\n"
         )
 
         raise HTTPException(
@@ -229,15 +222,8 @@ def receive_suricata_alert(
         )
 
     except Exception:
-        print(
-            "\n========== SURICATA INCIDENT ERROR =========="
-        )
-        print(
-            "Unable to create/correlate incident from "
-            "Suricata alert"
-        )
-        print(
-            "============================================\n"
+        logger.error(
+            "Unable to create/correlate incident from Suricata alert"
         )
 
         raise HTTPException(
@@ -263,14 +249,8 @@ def receive_suricata_alert(
         )
 
     except Exception:
-        print(
-            "\n========== SURICATA CORRELATION ERROR =========="
-        )
-        print(
+        logger.error(
             "Unable to determine correlation workflow state"
-        )
-        print(
-            "===============================================\n"
         )
 
         raise HTTPException(
@@ -295,14 +275,8 @@ def receive_suricata_alert(
             )
 
         except Exception:
-            print(
-                "\n========== SURICATA CORRELATION STATUS ERROR =========="
-            )
-            print(
-                "Unable to mark incident as correlated"
-            )
-            print(
-                "======================================================\n"
+            logger.error(
+                "Unable to mark Suricata incident as correlated"
             )
 
             raise HTTPException(
@@ -368,14 +342,8 @@ def receive_suricata_alert(
         )
 
     except Exception:
-        print(
-            "\n========== SURICATA WORKFLOW ERROR =========="
-        )
-        print(
-            "SOC workflow could not be completed"
-        )
-        print(
-            "============================================\n"
+        logger.error(
+            "Suricata SOC workflow could not be completed"
         )
 
         # IMPORTANT:

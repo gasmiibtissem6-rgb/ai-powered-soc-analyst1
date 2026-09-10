@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import json
 import re
 from pathlib import Path
@@ -16,6 +17,9 @@ from llama_index.core import (
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.vector_stores.qdrant import QdrantVectorStore
+
+
+logger = logging.getLogger(__name__)
 
 
 class RAGService:
@@ -1439,7 +1443,7 @@ class RAGService:
             )
 
         except Exception:
-            print(
+            logger.error(
                 "RAG retrieval failed"
             )
             return []

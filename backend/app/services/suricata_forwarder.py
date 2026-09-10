@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import time
 import urllib.error
@@ -7,6 +8,9 @@ import urllib.request
 
 EVE_PATH = "/var/log/suricata/eve.json"
 API_URL = "http://127.0.0.1:8000/suricata/alerts"
+
+logger = logging.getLogger(__name__)
+
 
 SOC_INGESTION_API_KEY = os.getenv(
     "SOC_INGESTION_API_KEY",
@@ -34,18 +38,18 @@ def send_alert(alert: dict) -> None:
             request,
             timeout=30,
         ) as response:
-            print(
+            logger.info(
                 "Suricata alert sent successfully"
             )
 
     except urllib.error.HTTPError as exc:
-        print(
-            f"FastAPI HTTP error "
-            f"{exc.code}"
+        logger.error(
+            "FastAPI HTTP error code=%s",
+            exc.code,
         )
 
     except Exception:
-        print(
+        logger.error(
             "Unable to send Suricata alert"
         )
 
@@ -56,8 +60,8 @@ def follow_eve_file() -> None:
     only event_type='alert' records.
     """
 
-    print(
-        f"Watching {EVE_PATH}"
+    logger.info(
+        "Suricata EVE forwarder started"
     )
 
     with open(
@@ -98,20 +102,8 @@ def follow_eve_file() -> None:
             ) != "alert":
                 continue
 
-            print(
-                "New Suricata alert detected:"
-            )
-
-            alert_data = (
-                event.get("alert")
-                or {}
-            )
-
-            print(
-                alert_data.get(
-                    "signature",
-                    "Unknown signature",
-                )
+            logger.info(
+                "New Suricata alert detected"
             )
 
             send_alert(

@@ -1,3 +1,4 @@
+import logging
 import operator
 
 from typing import Annotated, Literal, TypedDict
@@ -10,6 +11,8 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 from app.services.llm_service import LLMService
 from app.services.mitre_service import MitreService
@@ -442,7 +445,7 @@ def threat_intelligence_agent(
             )
 
         except Exception:
-            print(
+            logger.error(
                 "Threat Intelligence IOC extraction failed"
             )
 
@@ -791,7 +794,7 @@ def investigation_agent(
         )
 
     except Exception:
-        print(
+        logger.error(
             "RAG search failed"
         )
 
