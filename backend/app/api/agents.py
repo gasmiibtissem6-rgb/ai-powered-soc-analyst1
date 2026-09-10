@@ -1,3 +1,5 @@
+import logging
+
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
@@ -20,6 +22,9 @@ from app.models.incident import Incident
 from app.models.report import SOCReport
 from app.models.soar_action import SOARAction
 from app.models.user import User
+
+
+logger = logging.getLogger(__name__)
 
 
 # =========================================================
@@ -345,10 +350,8 @@ def save_ai_analysis(
     except Exception as exc:
         db.rollback()
 
-        print(
-            f"AI ANALYSIS SAVE ERROR: "
-            f"{type(exc).__name__}: {exc}",
-            flush=True,
+        logger.error(
+            "AI analysis persistence failed"
         )
 
         raise HTTPException(
@@ -675,10 +678,8 @@ def save_soc_report(
     except Exception as exc:
         db.rollback()
 
-        print(
-            f"SOC REPORT SAVE ERROR: "
-            f"{type(exc).__name__}: {exc}",
-            flush=True,
+        logger.error(
+            "SOC report persistence failed"
         )
 
         raise HTTPException(
@@ -803,10 +804,8 @@ def save_soar_action(
     except Exception as exc:
         db.rollback()
 
-        print(
-            f"SOAR ACTION SAVE ERROR: "
-            f"{type(exc).__name__}: {exc}",
-            flush=True,
+        logger.error(
+            "SOAR action persistence failed"
         )
 
         raise HTTPException(
@@ -1232,17 +1231,8 @@ def run_soc_workflow(
 
     except Exception as exc:
 
-        print(
-            "\n========== SOC RESULT PERSISTENCE ERROR ==========",
-            flush=True,
-        )
-        print(
-            f"{type(exc).__name__}: {exc}",
-            flush=True,
-        )
-        print(
-            "==================================================\n",
-            flush=True,
+        logger.error(
+            "SOC result persistence failed"
         )
 
         try:
@@ -1476,17 +1466,8 @@ def resume_soc_workflow(
 
     except Exception as exc:
 
-        print(
-            "\n========== SOC GRAPH RESUME ERROR ==========",
-            flush=True,
-        )
-        print(
-            f"{type(exc).__name__}: {exc}",
-            flush=True,
-        )
-        print(
-            "============================================\n",
-            flush=True,
+        logger.error(
+            "SOC graph resume failed"
         )
 
         rate_limited = is_llm_rate_limit_error(
@@ -1574,17 +1555,8 @@ def resume_soc_workflow(
 
     except Exception as exc:
 
-        print(
-            "\n========== SOC RESULT PERSISTENCE ERROR ==========",
-            flush=True,
-        )
-        print(
-            f"{type(exc).__name__}: {exc}",
-            flush=True,
-        )
-        print(
-            "==================================================\n",
-            flush=True,
+        logger.error(
+            "SOC result persistence failed"
         )
 
         try:
