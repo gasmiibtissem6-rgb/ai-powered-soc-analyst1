@@ -1,9 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { apiRequest } from "@/lib/api";
-import { initKeycloak } from "@/lib/keycloak-auth";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import { useRouter } from "next/navigation";
+
+import {
+  apiRequest,
+} from "@/lib/api";
+
+import {
+  initKeycloak,
+} from "@/lib/keycloak-auth";
+
 
 type Metrics = {
   total_incidents: number;
@@ -13,14 +26,16 @@ type Metrics = {
 };
 
 
-type SeverityMetrics = {
+type SeverityMetric = {
   severity: string;
   count: number;
 };
 
+
 type SeverityMetricsResponse =
-  | SeverityMetrics[]
+  | SeverityMetric[]
   | Record<string, number>;
+
 
 type Incident = {
   id: number;
@@ -31,495 +46,1392 @@ type Incident = {
 };
 
 
+type NavigationItem = {
+  title: string;
+  description: string;
+  route: string;
+  category: string;
+};
+
+
+const navigationItems: NavigationItem[] = [
+  {
+    title: "Alerts",
+    description:
+      "Review security alerts from Wazuh, Suricata and other SOC sources.",
+    route: "/alerts",
+    category: "Monitoring",
+  },
+  {
+    title: "Incidents",
+    description:
+      "Investigate correlated security incidents and their lifecycle.",
+    route: "/incidents",
+    category: "Investigation",
+  },
+  {
+    title: "AI Analysis",
+    description:
+      "Generate and review LLM-assisted SOC investigations.",
+    route: "/ai-analysis",
+    category: "Artificial Intelligence",
+  },
+  {
+    title: "Threat Intelligence",
+    description:
+      "Enrich IOCs using AbuseIPDB, VirusTotal, OTX and MISP.",
+    route: "/threat-intelligence",
+    category: "Threat Intelligence",
+  },
+  {
+    title: "MITRE ATT&CK",
+    description:
+      "Validate ATT&CK techniques and inspect technique information.",
+    route: "/mitre",
+    category: "Knowledge Base",
+  },
+  {
+    title: "Machine Learning",
+    description:
+      "Run network classification and Suricata anomaly detection.",
+    route: "/ml",
+    category: "Machine Learning",
+  },
+  {
+    title: "SOAR Actions",
+    description:
+      "Review, approve and execute automated response actions.",
+    route: "/soar",
+    category: "Response",
+  },
+  {
+    title: "SOC Reports",
+    description:
+      "Review generated reports, AI results, ML context and recommendations.",
+    route: "/reports",
+    category: "Reporting",
+  },
+];
+
+
+function normalize(
+  value?: string | null
+) {
+  return (
+    value
+      ?.trim()
+      .toLowerCase()
+    ?? ""
+  );
+}
+
+
+function severityClass(
+  severity?: string | null
+) {
+  switch (
+    normalize(severity)
+  ) {
+    case "critical":
+      return (
+        "border-red-500/40 " +
+        "bg-red-500/10 " +
+        "text-red-400"
+      );
+
+    case "high":
+      return (
+        "border-orange-500/40 " +
+        "bg-orange-500/10 " +
+        "text-orange-400"
+      );
+
+    case "medium":
+      return (
+        "border-yellow-500/40 " +
+        "bg-yellow-500/10 " +
+        "text-yellow-300"
+      );
+
+    case "low":
+      return (
+        "border-emerald-500/40 " +
+        "bg-emerald-500/10 " +
+        "text-emerald-400"
+      );
+
+    default:
+      return (
+        "border-slate-500/40 " +
+        "bg-slate-500/10 " +
+        "text-slate-300"
+      );
+  }
+}
+
+
+function statusClass(
+  status?: string | null
+) {
+  switch (
+    normalize(status)
+  ) {
+    case "resolved":
+    case "closed":
+      return (
+        "border-emerald-500/40 " +
+        "bg-emerald-500/10 " +
+        "text-emerald-400"
+      );
+
+    case "investigating":
+    case "in_progress":
+      return (
+        "border-violet-500/40 " +
+        "bg-violet-500/10 " +
+        "text-violet-300"
+      );
+
+    case "open":
+    case "new":
+      return (
+        "border-cyan-500/40 " +
+        "bg-cyan-500/10 " +
+        "text-cyan-300"
+      );
+
+    default:
+      return (
+        "border-slate-500/40 " +
+        "bg-slate-500/10 " +
+        "text-slate-300"
+      );
+  }
+}
+
 
 export default function DashboardPage() {
-
-  const router = useRouter();
-
-  const [metrics, setMetrics] =
-    useState<Metrics | null>(null);
+  const router =
+    useRouter();
 
 
-  const [severity, setSeverity] =
-    useState<SeverityMetrics[]>([]);
+  const [
+    metrics,
+    setMetrics,
+  ] =
+    useState<Metrics | null>(
+      null
+    );
 
 
-  const [incidents, setIncidents] =
-    useState<Incident[]>([]);
+  const [
+    severity,
+    setSeverity,
+  ] =
+    useState<SeverityMetric[]>(
+      []
+    );
 
 
-  const [loading, setLoading] =
+  const [
+    incidents,
+    setIncidents,
+  ] =
+    useState<Incident[]>(
+      []
+    );
+
+
+  const [
+    loading,
+    setLoading,
+  ] =
     useState(true);
 
 
+  const [
+    refreshing,
+    setRefreshing,
+  ] =
+    useState(false);
+
+
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+
+  const loadDashboard =
+    useCallback(
+      async (
+        initialLoad = false
+      ) => {
+        try {
+          if (
+            initialLoad
+          ) {
+            setLoading(
+              true
+            );
+          } else {
+            setRefreshing(
+              true
+            );
+          }
+
+          setError(
+            null
+          );
+
+          const authenticated =
+            await initKeycloak();
+
+          if (
+            !authenticated
+          ) {
+            router.replace(
+              "/login"
+            );
+
+            return;
+          }
+
+          const [
+            metricsData,
+            severityData,
+            incidentsData,
+          ] =
+            await Promise.all([
+              apiRequest<Metrics>(
+                "/metrics"
+              ),
+
+              apiRequest<
+                SeverityMetricsResponse
+              >(
+                "/metrics/severity"
+              ),
+
+              apiRequest<
+                Incident[]
+              >(
+                "/incidents"
+              ),
+            ]);
+
+
+          setMetrics(
+            metricsData
+          );
+
+
+          if (
+            Array.isArray(
+              severityData
+            )
+          ) {
+            setSeverity(
+              severityData
+            );
+          } else {
+            setSeverity(
+              Object.entries(
+                severityData
+              ).map(
+                ([
+                  severityName,
+                  count,
+                ]) => ({
+                  severity:
+                    severityName,
+
+                  count:
+                    Number(
+                      count
+                    ),
+                })
+              )
+            );
+          }
+
+
+          setIncidents(
+            incidentsData.slice(
+              0,
+              6
+            )
+          );
+
+        } catch (
+          requestError
+        ) {
+          console.error(
+            "Dashboard loading error:",
+            requestError
+          );
+
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Unable to load dashboard"
+          );
+
+        } finally {
+          setLoading(
+            false
+          );
+
+          setRefreshing(
+            false
+          );
+        }
+      },
+      [router]
+    );
 
 
   useEffect(() => {
+  let active = true;
 
+  async function initializeDashboard() {
+    try {
+      const authenticated =
+        await initKeycloak();
 
-    async function load() {
+      if (!active) {
+        return;
+      }
 
+      if (!authenticated) {
+        router.replace(
+          "/login"
+        );
 
-      try {
+        return;
+      }
 
-
-        const authenticated =
-          await initKeycloak();
-
-
-
-        if (!authenticated) {
-
-          return;
-
-        }
-
-
-
-
-        const metricsData =
-          await apiRequest<Metrics>(
+      const [
+        metricsData,
+        severityData,
+        incidentsData,
+      ] =
+        await Promise.all([
+          apiRequest<Metrics>(
             "/metrics"
-          );
+          ),
 
-
-
-        const severityData =
-               await apiRequest<SeverityMetricsResponse>(
+          apiRequest<
+            SeverityMetricsResponse
+          >(
             "/metrics/severity"
-  );
+          ),
 
-
-
-        const incidentsData =
-          await apiRequest<Incident[]>(
+          apiRequest<
+            Incident[]
+          >(
             "/incidents"
-          );
+          ),
+        ]);
 
+      if (!active) {
+        return;
+      }
 
+      setMetrics(
+        metricsData
+      );
 
-        setMetrics(metricsData);
-
-
-
-
-        if (Array.isArray(severityData)) {
-
-
-          setSeverity(
+      if (
+        Array.isArray(
+          severityData
+        )
+      ) {
+        setSeverity(
+          severityData
+        );
+      } else {
+        setSeverity(
+          Object.entries(
             severityData
-          );
+          ).map(
+            ([
+              severityName,
+              count,
+            ]) => ({
+              severity:
+                severityName,
 
-
-        } else {
-
-
-          setSeverity(
-
-            Object.entries(severityData).map(
-              ([severity, count]) => ({
-
-                severity,
-
-                count: Number(count),
-
-              })
-            )
-
-          );
-
-
-        }
-
-
-
-
-        setIncidents(
-          incidentsData.slice(0, 5)
+              count:
+                Number(
+                  count
+                ),
+            })
+          )
         );
-
-
-
       }
-      catch(error) {
 
+      setIncidents(
+        incidentsData.slice(
+          0,
+          6
+        )
+      );
 
-        console.error(
-          "Dashboard loading error:",
-          error
+    } catch (
+      requestError
+    ) {
+      console.error(
+        "Dashboard loading error:",
+        requestError
+      );
+
+      if (
+        active
+      ) {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Unable to load dashboard"
         );
-
-
-      }
-      finally {
-
-
-        setLoading(false);
-
-
       }
 
-
+    } finally {
+      if (
+        active
+      ) {
+        setLoading(
+          false
+        );
+      }
     }
+  }
+
+  void initializeDashboard();
+
+  return () => {
+    active =
+      false;
+  };
+}, [
+  router,
+]);
 
 
+  const sortedSeverity =
+    useMemo(
+      () => {
+        const priority:
+          Record<
+            string,
+            number
+          > = {
+          critical: 0,
+          high: 1,
+          medium: 2,
+          low: 3,
+        };
 
-    load();
-
-
-
-  }, []);
-
-
-
-
-
-
-  if (loading) {
-
-
-    return (
-
-      <div className="p-10">
-
-        Loading dashboard...
-
-      </div>
-
+        return [
+          ...severity,
+        ].sort(
+          (
+            first,
+            second
+          ) =>
+            (
+              priority[
+                normalize(
+                  first.severity
+                )
+              ]
+              ?? 99
+            )
+            -
+            (
+              priority[
+                normalize(
+                  second.severity
+                )
+              ]
+              ?? 99
+            )
+        );
+      },
+      [severity]
     );
 
+
+  if (
+    loading
+  ) {
+    return (
+      <main
+        className="
+          min-h-screen
+          bg-[#07111c]
+          p-8
+          text-slate-100
+        "
+      >
+        <div
+          className="
+            mx-auto
+            max-w-[1750px]
+            rounded-xl
+            border
+            border-slate-700
+            bg-[#0b1622]
+            p-8
+          "
+        >
+          Loading SOC dashboard...
+        </div>
+      </main>
+    );
   }
 
 
-
-
-
-
   return (
-
-
-    <main className="p-8 space-y-6">
-
-
-      <h1 className="text-3xl font-bold">
-
-        SOC Dashboard
-
-      </h1>
-
-
-
-
-
-      {/* KPI CARDS */}
-
-      <section className="grid grid-cols-4 gap-5">
-
-
-
-        <div className="border rounded-xl p-5">
-
-          <h2 className="font-semibold">
-
-            Total Incidents
-
-          </h2>
-
-
-          <p className="text-3xl mt-3">
-
-            {metrics?.total_incidents ?? 0}
-
-          </p>
-
-        </div>
-
-
-
-
-
-
-        <div className="border rounded-xl p-5">
-
-
-          <h2 className="font-semibold">
-
-            Open Incidents
-
-          </h2>
-
-
-          <p className="text-3xl mt-3">
-
-            {metrics?.open_incidents ?? 0}
-
-          </p>
-
-
-        </div>
-
-
-
-
-
-
-        <div className="border rounded-xl p-5">
-
-
-          <h2 className="font-semibold">
-
-            Critical
-
-          </h2>
-
-
-          <p className="text-3xl mt-3">
-
-            {metrics?.critical_incidents ?? 0}
-
-          </p>
-
-
-        </div>
-
-
-
-
-
-
-        <div className="border rounded-xl p-5">
-
-
-          <h2 className="font-semibold">
-
-            Resolved
-
-          </h2>
-
-
-          <p className="text-3xl mt-3">
-
-            {metrics?.resolved_incidents ?? 0}
-
-          </p>
-
-
-        </div>
-
-
-
-      </section>
-
-
-
-
-
-
-
-
-      {/* RECENT INCIDENTS */}
-
-
-      <section className="border rounded-xl p-6">
-
-
-        <h2 className="text-xl font-bold">
-
-          Recent Incidents
-
-        </h2>
-
-
-
-
-        <div className="mt-5 space-y-3">
-
-
-          {
-            incidents.map(
-              (item) => (
-
-
-                <div
-
-key={item.id}
-
-onClick={() =>
-  router.push(`/incidents/${item.id}`)
-}
-
-className="
-border 
-rounded-lg 
-p-4 
-flex 
-justify-between 
-items-center
-cursor-pointer
-hover:bg-gray-800
-transition
-"
-
->
-
-
-
-                  <div>
-
-
-                    <p className="font-semibold">
-
-                      #{item.id} {item.title}
-
+    <main
+      className="
+        min-h-screen
+        bg-[#07111c]
+        p-8
+        text-slate-100
+      "
+    >
+      <div
+        className="
+          mx-auto
+          max-w-[1750px]
+          space-y-7
+        "
+      >
+
+        {/* HEADER */}
+
+        <section
+          className="
+            flex
+            flex-col
+            gap-5
+            xl:flex-row
+            xl:items-center
+            xl:justify-between
+          "
+        >
+          <div>
+            <p
+              className="
+                text-sm
+                uppercase
+                tracking-[0.30em]
+                text-cyan-400
+              "
+            >
+              Security Operations Center
+            </p>
+
+            <h1
+              className="
+                mt-2
+                text-4xl
+                font-bold
+              "
+            >
+              SOC Dashboard
+            </h1>
+
+            <p
+              className="
+                mt-2
+                max-w-3xl
+                text-slate-400
+              "
+            >
+              Unified monitoring, investigation,
+              artificial intelligence, threat
+              intelligence, automation and reporting
+              workspace.
+            </p>
+          </div>
+
+
+          <button
+            type="button"
+            disabled={
+              refreshing
+            }
+            onClick={
+              () =>
+                void loadDashboard(
+                  false
+                )
+            }
+            className="
+              rounded-lg
+              bg-cyan-500
+              px-5
+              py-3
+              font-semibold
+              text-slate-950
+              transition
+              hover:bg-cyan-400
+              disabled:opacity-50
+            "
+          >
+            {
+              refreshing
+                ? "Refreshing..."
+                : "Refresh Dashboard"
+            }
+          </button>
+        </section>
+
+
+        {/* ERROR */}
+
+        {
+          error && (
+            <section
+              className="
+                rounded-xl
+                border
+                border-red-500/40
+                bg-red-500/10
+                p-4
+                text-red-300
+              "
+            >
+              {error}
+            </section>
+          )
+        }
+
+
+        {/* KPIS */}
+
+        <section
+          className="
+            grid
+            gap-4
+            sm:grid-cols-2
+            xl:grid-cols-4
+          "
+        >
+          <div
+            className="
+              rounded-xl
+              border
+              border-slate-700
+              bg-[#0b1622]
+              p-6
+            "
+          >
+            <p
+              className="
+                text-xs
+                uppercase
+                tracking-wider
+                text-slate-400
+              "
+            >
+              Total Incidents
+            </p>
+
+            <p
+              className="
+                mt-3
+                text-4xl
+                font-bold
+              "
+            >
+              {
+                metrics
+                  ?.total_incidents
+                ?? 0
+              }
+            </p>
+          </div>
+
+
+          <div
+            className="
+              rounded-xl
+              border
+              border-cyan-500/30
+              bg-[#0b1622]
+              p-6
+            "
+          >
+            <p
+              className="
+                text-xs
+                uppercase
+                tracking-wider
+                text-slate-400
+              "
+            >
+              Open Incidents
+            </p>
+
+            <p
+              className="
+                mt-3
+                text-4xl
+                font-bold
+                text-cyan-300
+              "
+            >
+              {
+                metrics
+                  ?.open_incidents
+                ?? 0
+              }
+            </p>
+          </div>
+
+
+          <div
+            className="
+              rounded-xl
+              border
+              border-red-500/30
+              bg-[#0b1622]
+              p-6
+            "
+          >
+            <p
+              className="
+                text-xs
+                uppercase
+                tracking-wider
+                text-slate-400
+              "
+            >
+              Critical
+            </p>
+
+            <p
+              className="
+                mt-3
+                text-4xl
+                font-bold
+                text-red-400
+              "
+            >
+              {
+                metrics
+                  ?.critical_incidents
+                ?? 0
+              }
+            </p>
+          </div>
+
+
+          <div
+            className="
+              rounded-xl
+              border
+              border-emerald-500/30
+              bg-[#0b1622]
+              p-6
+            "
+          >
+            <p
+              className="
+                text-xs
+                uppercase
+                tracking-wider
+                text-slate-400
+              "
+            >
+              Resolved
+            </p>
+
+            <p
+              className="
+                mt-3
+                text-4xl
+                font-bold
+                text-emerald-400
+              "
+            >
+              {
+                metrics
+                  ?.resolved_incidents
+                ?? 0
+              }
+            </p>
+          </div>
+        </section>
+
+
+        {/* SOC MODULES */}
+
+        <section>
+          <div
+            className="
+              mb-4
+              flex
+              items-end
+              justify-between
+              gap-4
+            "
+          >
+            <div>
+              <p
+                className="
+                  text-sm
+                  uppercase
+                  tracking-[0.20em]
+                  text-cyan-400
+                "
+              >
+                SOC Workspace
+              </p>
+
+              <h2
+                className="
+                  mt-1
+                  text-2xl
+                  font-bold
+                "
+              >
+                Security Modules
+              </h2>
+            </div>
+          </div>
+
+
+          <div
+            className="
+              grid
+              gap-4
+              md:grid-cols-2
+              xl:grid-cols-4
+            "
+          >
+            {
+              navigationItems.map(
+                (item) => (
+                  <button
+                    key={
+                      item.route
+                    }
+                    type="button"
+                    onClick={
+                      () =>
+                        router.push(
+                          item.route
+                        )
+                    }
+                    className="
+                      group
+                      rounded-xl
+                      border
+                      border-slate-700
+                      bg-[#0b1622]
+                      p-5
+                      text-left
+                      transition
+                      hover:-translate-y-0.5
+                      hover:border-cyan-500/60
+                      hover:bg-[#0d1a28]
+                    "
+                  >
+                    <p
+                      className="
+                        text-xs
+                        uppercase
+                        tracking-wider
+                        text-cyan-400
+                      "
+                    >
+                      {
+                        item.category
+                      }
                     </p>
 
+                    <h3
+                      className="
+                        mt-3
+                        text-xl
+                        font-bold
+                        text-slate-100
+                        group-hover:text-cyan-300
+                      "
+                    >
+                      {
+                        item.title
+                      }
+                    </h3>
 
-
-                    <p className="text-sm mt-1">
-
-                      Source: {item.source}
-
+                    <p
+                      className="
+                        mt-3
+                        text-sm
+                        leading-6
+                        text-slate-400
+                      "
+                    >
+                      {
+                        item.description
+                      }
                     </p>
 
-
-                  </div>
-
-
-
-
-
-                  <div className="text-right">
-
-
-                    <p>
-
-                      Severity:
-
-                      <b className="ml-2">
-
-                        {item.severity}
-
-                      </b>
-
-
+                    <p
+                      className="
+                        mt-5
+                        text-sm
+                        font-medium
+                        text-cyan-300
+                      "
+                    >
+                      Open module →
                     </p>
-
-
-
-
-                    <p>
-
-                      Status:
-
-                      <b className="ml-2">
-
-                        {item.status}
-
-                      </b>
-
-
-                    </p>
-
-
-
-                  </div>
-
-
-
-                </div>
-
-
+                  </button>
+                )
               )
-            )
-          }
+            }
+          </div>
+        </section>
 
 
+        {/* SEVERITY + INCIDENTS */}
 
-        </div>
+        <section
+          className="
+            grid
+            gap-5
+            xl:grid-cols-[0.8fr_1.8fr]
+          "
+        >
+
+          {/* SEVERITY */}
+
+          <div
+            className="
+              rounded-xl
+              border
+              border-slate-700
+              bg-[#0b1622]
+              p-6
+            "
+          >
+            <h2
+              className="
+                text-xl
+                font-bold
+              "
+            >
+              Incident Severity
+            </h2>
+
+            <p
+              className="
+                mt-1
+                text-sm
+                text-slate-400
+              "
+            >
+              Current incident distribution.
+            </p>
 
 
+            <div
+              className="
+                mt-6
+                space-y-3
+              "
+            >
+              {
+                sortedSeverity.length >
+                0 ? (
+                  sortedSeverity.map(
+                    (item) => (
+                      <div
+                        key={
+                          item.severity
+                        }
+                        className="
+                          flex
+                          items-center
+                          justify-between
+                          rounded-lg
+                          border
+                          border-slate-800
+                          bg-[#07111c]
+                          p-4
+                        "
+                      >
+                        <span
+                          className={[
+                            "rounded-full",
+                            "border",
+                            "px-3",
+                            "py-1",
+                            "text-sm",
+                            "font-medium",
+                            severityClass(
+                              item.severity
+                            ),
+                          ].join(
+                            " "
+                          )}
+                        >
+                          {
+                            item.severity
+                          }
+                        </span>
 
-      </section>
+                        <strong
+                          className="
+                            text-xl
+                          "
+                        >
+                          {
+                            item.count
+                          }
+                        </strong>
+                      </div>
+                    )
+                  )
+                ) : (
+                  <p
+                    className="
+                      text-sm
+                      text-slate-500
+                    "
+                  >
+                    No severity data available.
+                  </p>
+                )
+              }
+            </div>
+          </div>
 
 
+          {/* RECENT INCIDENTS */}
 
-
-
-
-
-
-      {/* SEVERITY DISTRIBUTION */}
-
-
-      <section className="border rounded-xl p-6">
-
-
-        <h2 className="text-xl font-bold">
-
-          Incident Severity Distribution
-
-        </h2>
-
-
-
-
-
-        <div className="mt-5 space-y-3">
-
-
-          {
-            severity.map(
-              (item,index)=>(
-
-
-                <div
-
-                  key={index}
-
-                  className="border rounded-lg p-3 flex justify-between"
-
+          <div
+            className="
+              overflow-hidden
+              rounded-xl
+              border
+              border-slate-700
+              bg-[#0b1622]
+            "
+          >
+            <div
+              className="
+                flex
+                items-center
+                justify-between
+                border-b
+                border-slate-700
+                p-6
+              "
+            >
+              <div>
+                <h2
+                  className="
+                    text-xl
+                    font-bold
+                  "
                 >
+                  Recent Incidents
+                </h2>
+
+                <p
+                  className="
+                    mt-1
+                    text-sm
+                    text-slate-400
+                  "
+                >
+                  Latest incidents received
+                  by the SOC.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  () =>
+                    router.push(
+                      "/incidents"
+                    )
+                }
+                className="
+                  rounded-lg
+                  border
+                  border-slate-600
+                  px-4
+                  py-2
+                  text-sm
+                  hover:bg-slate-800
+                "
+              >
+                View All
+              </button>
+            </div>
 
 
-                  <span>
+            <div
+              className="
+                divide-y
+                divide-slate-800
+              "
+            >
+              {
+                incidents.length >
+                0 ? (
+                  incidents.map(
+                    (incident) => (
+                      <button
+                        key={
+                          incident.id
+                        }
+                        type="button"
+                        onClick={
+                          () =>
+                            router.push(
+                              `/incidents/${incident.id}`
+                            )
+                        }
+                        className="
+                          flex
+                          w-full
+                          flex-col
+                          gap-4
+                          p-5
+                          text-left
+                          transition
+                          hover:bg-slate-800/40
+                          md:flex-row
+                          md:items-center
+                          md:justify-between
+                        "
+                      >
+                        <div
+                          className="
+                            min-w-0
+                          "
+                        >
+                          <p
+                            className="
+                              font-mono
+                              text-sm
+                              text-cyan-300
+                            "
+                          >
+                            Incident #
+                            {
+                              incident.id
+                            }
+                          </p>
 
-                    {item.severity}
+                          <p
+                            className="
+                              mt-1
+                              truncate
+                              font-semibold
+                              text-slate-100
+                            "
+                          >
+                            {
+                              incident.title
+                            }
+                          </p>
 
-                  </span>
-
-
-
-                  <b>
-
-                    {item.count}
-
-                  </b>
-
-
-
-                </div>
-
-
-              )
-            )
-          }
-
-
-
-        </div>
-
-
-
-      </section>
+                          <p
+                            className="
+                              mt-1
+                              text-sm
+                              text-slate-400
+                            "
+                          >
+                            Source:{" "}
+                            {
+                              incident.source
+                            }
+                          </p>
+                        </div>
 
 
+                        <div
+                          className="
+                            flex
+                            flex-wrap
+                            gap-2
+                          "
+                        >
+                          <span
+                            className={[
+                              "rounded-full",
+                              "border",
+                              "px-3",
+                              "py-1",
+                              "text-xs",
+                              severityClass(
+                                incident.severity
+                              ),
+                            ].join(
+                              " "
+                            )}
+                          >
+                            {
+                              incident.severity
+                            }
+                          </span>
+
+                          <span
+                            className={[
+                              "rounded-full",
+                              "border",
+                              "px-3",
+                              "py-1",
+                              "text-xs",
+                              statusClass(
+                                incident.status
+                              ),
+                            ].join(
+                              " "
+                            )}
+                          >
+                            {
+                              incident.status
+                            }
+                          </span>
+                        </div>
+                      </button>
+                    )
+                  )
+                ) : (
+                  <div
+                    className="
+                      p-10
+                      text-center
+                      text-slate-400
+                    "
+                  >
+                    No incidents available.
+                  </div>
+                )
+              }
+            </div>
+          </div>
+        </section>
 
 
+        {/* ARCHITECTURE SUMMARY */}
 
+        <section
+          className="
+            grid
+            gap-4
+            md:grid-cols-3
+          "
+        >
+          <div
+            className="
+              rounded-xl
+              border
+              border-slate-700
+              bg-[#0b1622]
+              p-5
+            "
+          >
+            <p
+              className="
+                text-xs
+                uppercase
+                tracking-wider
+                text-slate-500
+              "
+            >
+              Detection
+            </p>
+
+            <p
+              className="
+                mt-2
+                font-semibold
+              "
+            >
+              Wazuh + Suricata
+            </p>
+          </div>
+
+
+          <div
+            className="
+              rounded-xl
+              border
+              border-slate-700
+              bg-[#0b1622]
+              p-5
+            "
+          >
+            <p
+              className="
+                text-xs
+                uppercase
+                tracking-wider
+                text-slate-500
+              "
+            >
+              Intelligence
+            </p>
+
+            <p
+              className="
+                mt-2
+                font-semibold
+              "
+            >
+              LLM + RAG + ML + Threat Intel
+            </p>
+          </div>
+
+
+          <div
+            className="
+              rounded-xl
+              border
+              border-slate-700
+              bg-[#0b1622]
+              p-5
+            "
+          >
+            <p
+              className="
+                text-xs
+                uppercase
+                tracking-wider
+                text-slate-500
+              "
+            >
+              Response
+            </p>
+
+            <p
+              className="
+                mt-2
+                font-semibold
+              "
+            >
+              HITL + SOAR Automation
+            </p>
+          </div>
+        </section>
+
+      </div>
     </main>
-
-
   );
-
-
 }
