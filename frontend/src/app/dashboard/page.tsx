@@ -7,7 +7,9 @@ import {
   useState,
 } from "react";
 
-import { useRouter } from "next/navigation";
+import {
+  useRouter,
+} from "next/navigation";
 
 import {
   apiRequest,
@@ -15,8 +17,13 @@ import {
 
 import {
   initKeycloak,
+  keycloak,
 } from "@/lib/keycloak-auth";
 
+
+// =====================================================
+// TYPES
+// =====================================================
 
 type Metrics = {
   total_incidents: number;
@@ -46,13 +53,32 @@ type Incident = {
 };
 
 
+type KeycloakTokenParsed = {
+  realm_access?: {
+    roles?: string[];
+  };
+
+  resource_access?: Record<
+    string,
+    {
+      roles?: string[];
+    }
+  >;
+};
+
+
 type NavigationItem = {
   title: string;
   description: string;
   route: string;
   category: string;
+  adminOnly?: boolean;
 };
 
+
+// =====================================================
+// NAVIGATION
+// =====================================================
 
 const navigationItems: NavigationItem[] = [
   {
@@ -62,6 +88,7 @@ const navigationItems: NavigationItem[] = [
     route: "/alerts",
     category: "Monitoring",
   },
+
   {
     title: "Incidents",
     description:
@@ -69,6 +96,7 @@ const navigationItems: NavigationItem[] = [
     route: "/incidents",
     category: "Investigation",
   },
+
   {
     title: "AI Analysis",
     description:
@@ -78,12 +106,13 @@ const navigationItems: NavigationItem[] = [
   },
 
   {
-  title: "SOC Copilot",
-  description:
-    "Ask cybersecurity questions using the RAG-powered analyst assistant.",
-  route: "/analyst",
-  category: "Artificial Intelligence",
-},
+    title: "SOC Copilot",
+    description:
+      "Ask cybersecurity questions using the RAG-powered analyst assistant.",
+    route: "/analyst",
+    category: "Artificial Intelligence",
+  },
+
   {
     title: "Threat Intelligence",
     description:
@@ -91,6 +120,7 @@ const navigationItems: NavigationItem[] = [
     route: "/threat-intelligence",
     category: "Threat Intelligence",
   },
+
   {
     title: "MITRE ATT&CK",
     description:
@@ -98,6 +128,7 @@ const navigationItems: NavigationItem[] = [
     route: "/mitre",
     category: "Knowledge Base",
   },
+
   {
     title: "Machine Learning",
     description:
@@ -106,7 +137,6 @@ const navigationItems: NavigationItem[] = [
     category: "Machine Learning",
   },
 
-
   {
     title: "SOAR Actions",
     description:
@@ -114,6 +144,7 @@ const navigationItems: NavigationItem[] = [
     route: "/soar",
     category: "Response",
   },
+
   {
     title: "SOC Reports",
     description:
@@ -121,8 +152,21 @@ const navigationItems: NavigationItem[] = [
     route: "/reports",
     category: "Reporting",
   },
+
+  {
+    title: "User Administration",
+    description:
+      "Manage SOC users, roles, account status and credentials through Keycloak.",
+    route: "/admin/users",
+    category: "Administration",
+    adminOnly: true,
+  },
 ];
 
+
+// =====================================================
+// HELPERS
+// =====================================================
 
 function normalize(
   value?: string | null
@@ -220,6 +264,40 @@ function statusClass(
 }
 
 
+function getCurrentRoles() {
+  const parsed =
+    keycloak.tokenParsed as
+      | KeycloakTokenParsed
+      | undefined;
+
+  const clientRoles =
+    parsed
+      ?.resource_access
+      ?.[
+        "soc-backend"
+      ]
+      ?.roles
+    ?? [];
+
+  const realmRoles =
+    parsed
+      ?.realm_access
+      ?.roles
+    ?? [];
+
+  return Array.from(
+    new Set([
+      ...clientRoles,
+      ...realmRoles,
+    ])
+  );
+}
+
+
+// =====================================================
+// PAGE
+// =====================================================
+
 export default function DashboardPage() {
   const router =
     useRouter();
@@ -253,6 +331,15 @@ export default function DashboardPage() {
 
 
   const [
+    roles,
+    setRoles,
+  ] =
+    useState<string[]>(
+      []
+    );
+
+
+  const [
     loading,
     setLoading,
   ] =
@@ -275,30 +362,32 @@ export default function DashboardPage() {
     );
 
 
+  const isAdmin =
+    roles.includes(
+      "admin"
+    );
+
+
+  // =====================================================
+  // REFRESH DASHBOARD
+  // =====================================================
+
   const loadDashboard =
     useCallback(
-      async (
-        initialLoad = false
-      ) => {
+      async () => {
         try {
-          if (
-            initialLoad
-          ) {
-            setLoading(
-              true
-            );
-          } else {
-            setRefreshing(
-              true
-            );
-          }
+          setRefreshing(
+            true
+          );
 
           setError(
             null
           );
 
+
           const authenticated =
             await initKeycloak();
+
 
           if (
             !authenticated
@@ -309,6 +398,11 @@ export default function DashboardPage() {
 
             return;
           }
+
+
+          const currentRoles =
+            getCurrentRoles();
+
 
           const [
             metricsData,
@@ -334,6 +428,11 @@ export default function DashboardPage() {
             ]);
 
 
+          setRoles(
+            currentRoles
+          );
+
+
           setMetrics(
             metricsData
           );
@@ -347,6 +446,7 @@ export default function DashboardPage() {
             setSeverity(
               severityData
             );
+
           } else {
             setSeverity(
               Object.entries(
@@ -391,145 +491,180 @@ export default function DashboardPage() {
           );
 
         } finally {
-          setLoading(
-            false
-          );
-
           setRefreshing(
             false
           );
         }
       },
-      [router]
+      [
+        router,
+      ]
     );
 
 
+  // =====================================================
+  // INITIAL LOAD
+  // =====================================================
+
   useEffect(() => {
-  let active = true;
+    let active =
+      true;
 
-  async function initializeDashboard() {
-    try {
-      const authenticated =
-        await initKeycloak();
 
-      if (!active) {
-        return;
-      }
+    async function initializeDashboard() {
+      try {
+        const authenticated =
+          await initKeycloak();
 
-      if (!authenticated) {
-        router.replace(
-          "/login"
+
+        if (
+          !active
+        ) {
+          return;
+        }
+
+
+        if (
+          !authenticated
+        ) {
+          router.replace(
+            "/login"
+          );
+
+          return;
+        }
+
+
+        const currentRoles =
+          getCurrentRoles();
+
+
+        const [
+          metricsData,
+          severityData,
+          incidentsData,
+        ] =
+          await Promise.all([
+            apiRequest<Metrics>(
+              "/metrics"
+            ),
+
+            apiRequest<
+              SeverityMetricsResponse
+            >(
+              "/metrics/severity"
+            ),
+
+            apiRequest<
+              Incident[]
+            >(
+              "/incidents"
+            ),
+          ]);
+
+
+        if (
+          !active
+        ) {
+          return;
+        }
+
+
+        setRoles(
+          currentRoles
         );
 
-        return;
-      }
 
-      const [
-        metricsData,
-        severityData,
-        incidentsData,
-      ] =
-        await Promise.all([
-          apiRequest<Metrics>(
-            "/metrics"
-          ),
-
-          apiRequest<
-            SeverityMetricsResponse
-          >(
-            "/metrics/severity"
-          ),
-
-          apiRequest<
-            Incident[]
-          >(
-            "/incidents"
-          ),
-        ]);
-
-      if (!active) {
-        return;
-      }
-
-      setMetrics(
-        metricsData
-      );
-
-      if (
-        Array.isArray(
-          severityData
-        )
-      ) {
-        setSeverity(
-          severityData
+        setMetrics(
+          metricsData
         );
-      } else {
-        setSeverity(
-          Object.entries(
+
+
+        if (
+          Array.isArray(
             severityData
-          ).map(
-            ([
-              severityName,
-              count,
-            ]) => ({
-              severity:
-                severityName,
+          )
+        ) {
+          setSeverity(
+            severityData
+          );
 
-              count:
-                Number(
-                  count
-                ),
-            })
+        } else {
+          setSeverity(
+            Object.entries(
+              severityData
+            ).map(
+              ([
+                severityName,
+                count,
+              ]) => ({
+                severity:
+                  severityName,
+
+                count:
+                  Number(
+                    count
+                  ),
+              })
+            )
+          );
+        }
+
+
+        setIncidents(
+          incidentsData.slice(
+            0,
+            6
           )
         );
-      }
 
-      setIncidents(
-        incidentsData.slice(
-          0,
-          6
-        )
-      );
-
-    } catch (
-      requestError
-    ) {
-      console.error(
-        "Dashboard loading error:",
+      } catch (
         requestError
-      );
-
-      if (
-        active
       ) {
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : "Unable to load dashboard"
+        console.error(
+          "Dashboard loading error:",
+          requestError
         );
-      }
 
-    } finally {
-      if (
-        active
-      ) {
-        setLoading(
-          false
-        );
+
+        if (
+          active
+        ) {
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Unable to load dashboard"
+          );
+        }
+
+      } finally {
+        if (
+          active
+        ) {
+          setLoading(
+            false
+          );
+        }
       }
     }
-  }
 
-  void initializeDashboard();
 
-  return () => {
-    active =
-      false;
-  };
-}, [
-  router,
-]);
+    void initializeDashboard();
 
+
+    return () => {
+      active =
+        false;
+    };
+
+  }, [
+    router,
+  ]);
+
+
+  // =====================================================
+  // SORT SEVERITY
+  // =====================================================
 
   const sortedSeverity =
     useMemo(
@@ -544,6 +679,7 @@ export default function DashboardPage() {
           medium: 2,
           low: 3,
         };
+
 
         return [
           ...severity,
@@ -571,9 +707,15 @@ export default function DashboardPage() {
             )
         );
       },
-      [severity]
+      [
+        severity,
+      ]
     );
 
+
+  // =====================================================
+  // LOADING
+  // =====================================================
 
   if (
     loading
@@ -604,6 +746,10 @@ export default function DashboardPage() {
     );
   }
 
+
+  // =====================================================
+  // PAGE
+  // =====================================================
 
   return (
     <main
@@ -646,6 +792,7 @@ export default function DashboardPage() {
               Security Operations Center
             </p>
 
+
             <h1
               className="
                 mt-2
@@ -655,6 +802,7 @@ export default function DashboardPage() {
             >
               SOC Dashboard
             </h1>
+
 
             <p
               className="
@@ -678,9 +826,7 @@ export default function DashboardPage() {
             }
             onClick={
               () =>
-                void loadDashboard(
-                  false
-                )
+                void loadDashboard()
             }
             className="
               rounded-lg
@@ -753,6 +899,7 @@ export default function DashboardPage() {
               Total Incidents
             </p>
 
+
             <p
               className="
                 mt-3
@@ -788,6 +935,7 @@ export default function DashboardPage() {
             >
               Open Incidents
             </p>
+
 
             <p
               className="
@@ -826,6 +974,7 @@ export default function DashboardPage() {
               Critical
             </p>
 
+
             <p
               className="
                 mt-3
@@ -862,6 +1011,7 @@ export default function DashboardPage() {
             >
               Resolved
             </p>
+
 
             <p
               className="
@@ -905,6 +1055,7 @@ export default function DashboardPage() {
                 SOC Workspace
               </p>
 
+
               <h2
                 className="
                   mt-1
@@ -927,86 +1078,95 @@ export default function DashboardPage() {
             "
           >
             {
-              navigationItems.map(
-                (item) => (
-                  <button
-                    key={
-                      item.route
-                    }
-                    type="button"
-                    onClick={
-                      () =>
-                        router.push(
-                          item.route
-                        )
-                    }
-                    className="
-                      group
-                      rounded-xl
-                      border
-                      border-slate-700
-                      bg-[#0b1622]
-                      p-5
-                      text-left
-                      transition
-                      hover:-translate-y-0.5
-                      hover:border-cyan-500/60
-                      hover:bg-[#0d1a28]
-                    "
-                  >
-                    <p
-                      className="
-                        text-xs
-                        uppercase
-                        tracking-wider
-                        text-cyan-400
-                      "
-                    >
-                      {
-                        item.category
-                      }
-                    </p>
-
-                    <h3
-                      className="
-                        mt-3
-                        text-xl
-                        font-bold
-                        text-slate-100
-                        group-hover:text-cyan-300
-                      "
-                    >
-                      {
-                        item.title
-                      }
-                    </h3>
-
-                    <p
-                      className="
-                        mt-3
-                        text-sm
-                        leading-6
-                        text-slate-400
-                      "
-                    >
-                      {
-                        item.description
-                      }
-                    </p>
-
-                    <p
-                      className="
-                        mt-5
-                        text-sm
-                        font-medium
-                        text-cyan-300
-                      "
-                    >
-                      Open module →
-                    </p>
-                  </button>
+              navigationItems
+                .filter(
+                  (item) =>
+                    !item.adminOnly
+                    || isAdmin
                 )
-              )
+                .map(
+                  (item) => (
+                    <button
+                      key={
+                        item.route
+                      }
+                      type="button"
+                      onClick={
+                        () =>
+                          router.push(
+                            item.route
+                          )
+                      }
+                      className="
+                        group
+                        rounded-xl
+                        border
+                        border-slate-700
+                        bg-[#0b1622]
+                        p-5
+                        text-left
+                        transition
+                        hover:-translate-y-0.5
+                        hover:border-cyan-500/60
+                        hover:bg-[#0d1a28]
+                      "
+                    >
+                      <p
+                        className="
+                          text-xs
+                          uppercase
+                          tracking-wider
+                          text-cyan-400
+                        "
+                      >
+                        {
+                          item.category
+                        }
+                      </p>
+
+
+                      <h3
+                        className="
+                          mt-3
+                          text-xl
+                          font-bold
+                          text-slate-100
+                          group-hover:text-cyan-300
+                        "
+                      >
+                        {
+                          item.title
+                        }
+                      </h3>
+
+
+                      <p
+                        className="
+                          mt-3
+                          text-sm
+                          leading-6
+                          text-slate-400
+                        "
+                      >
+                        {
+                          item.description
+                        }
+                      </p>
+
+
+                      <p
+                        className="
+                          mt-5
+                          text-sm
+                          font-medium
+                          text-cyan-300
+                        "
+                      >
+                        Open module →
+                      </p>
+                    </button>
+                  )
+                )
             }
           </div>
         </section>
@@ -1041,6 +1201,7 @@ export default function DashboardPage() {
             >
               Incident Severity
             </h2>
+
 
             <p
               className="
@@ -1098,6 +1259,7 @@ export default function DashboardPage() {
                             item.severity
                           }
                         </span>
+
 
                         <strong
                           className="
@@ -1157,6 +1319,7 @@ export default function DashboardPage() {
                   Recent Incidents
                 </h2>
 
+
                 <p
                   className="
                     mt-1
@@ -1168,6 +1331,7 @@ export default function DashboardPage() {
                   by the SOC.
                 </p>
               </div>
+
 
               <button
                 type="button"
@@ -1246,6 +1410,7 @@ export default function DashboardPage() {
                             }
                           </p>
 
+
                           <p
                             className="
                               mt-1
@@ -1258,6 +1423,7 @@ export default function DashboardPage() {
                               incident.title
                             }
                           </p>
+
 
                           <p
                             className="
@@ -1299,6 +1465,7 @@ export default function DashboardPage() {
                               incident.severity
                             }
                           </span>
+
 
                           <span
                             className={[
@@ -1368,6 +1535,7 @@ export default function DashboardPage() {
               Detection
             </p>
 
+
             <p
               className="
                 mt-2
@@ -1399,6 +1567,7 @@ export default function DashboardPage() {
               Intelligence
             </p>
 
+
             <p
               className="
                 mt-2
@@ -1429,6 +1598,7 @@ export default function DashboardPage() {
             >
               Response
             </p>
+
 
             <p
               className="
