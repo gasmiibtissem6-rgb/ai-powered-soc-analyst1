@@ -115,6 +115,34 @@ class WazuhService:
         else:
             alert_data = alert
 
+        # ==================================================
+        # MINIMAL PAYLOAD VALIDATION
+        # ==================================================
+
+        if not isinstance(alert_data, dict) or not alert_data:
+            raise ValueError(
+                "Wazuh alert payload is empty."
+            )
+
+        recognized_fields = {
+            "rule",
+            "agent",
+            "data",
+            "predecoder",
+            "full_log",
+            "message",
+            "timestamp",
+        }
+
+        if not any(
+            field in alert_data
+            for field in recognized_fields
+        ):
+            raise ValueError(
+                "Payload does not contain recognizable "
+                "Wazuh alert fields."
+            )
+
         rule = (
             alert_data.get(
                 "rule",

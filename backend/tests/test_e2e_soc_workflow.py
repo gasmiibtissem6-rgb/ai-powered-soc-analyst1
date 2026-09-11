@@ -526,3 +526,108 @@ def test_suricata_soc_workflow_end_to_end(
             bind=engine,
             checkfirst=True,
         )
+
+def test_wazuh_rejects_empty_payload(
+    monkeypatch,
+):
+    app.dependency_overrides[get_db] = (
+        override_get_db
+    )
+
+    original_secret_get = secret_manager.get
+
+    def fake_secret_get(
+        key,
+        default=None,
+    ):
+        if key == "SOC_INGESTION_API_KEY":
+            return "e2e-test-ingestion-key"
+
+        return original_secret_get(
+            key,
+            default,
+        )
+
+    monkeypatch.setattr(
+        secret_manager,
+        "get",
+        fake_secret_get,
+    )
+
+    client = TestClient(app)
+
+    headers = {
+        "X-SOC-Ingestion-Key": (
+            "e2e-test-ingestion-key"
+        ),
+    }
+
+    try:
+        response = client.post(
+            "/wazuh/alerts",
+            json={},
+            headers=headers,
+        )
+
+        assert response.status_code == 400
+        assert (
+            response.json()["detail"]
+            == "Unable to normalize Wazuh alert"
+        )
+
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_wazuh_rejects_empty_opensearch_source(
+    monkeypatch,
+):
+    app.dependency_overrides[get_db] = (
+        override_get_db
+    )
+
+    original_secret_get = secret_manager.get
+
+    def fake_secret_get(
+        key,
+        default=None,
+    ):
+        if key == "SOC_INGESTION_API_KEY":
+            return "e2e-test-ingestion-key"
+
+        return original_secret_get(
+            key,
+            default,
+        )
+
+    monkeypatch.setattr(
+        secret_manager,
+        "get",
+        fake_secret_get,
+    )
+
+    client = TestClient(app)
+
+    headers = {
+        "X-SOC-Ingestion-Key": (
+            "e2e-test-ingestion-key"
+        ),
+    }
+
+    try:
+        response = client.post(
+            "/wazuh/alerts",
+            json={
+                "_source": {},
+            },
+            headers=headers,
+        )
+
+        assert response.status_code == 400
+        assert (
+            response.json()["detail"]
+            == "Unable to normalize Wazuh alert"
+        )
+
+    finally:
+        app.dependency_overrides.clear()
