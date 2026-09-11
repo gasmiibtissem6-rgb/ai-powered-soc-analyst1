@@ -76,6 +76,14 @@ const navigationItems: NavigationItem[] = [
     route: "/ai-analysis",
     category: "Artificial Intelligence",
   },
+
+  {
+  title: "SOC Copilot",
+  description:
+    "Ask cybersecurity questions using the RAG-powered analyst assistant.",
+  route: "/analyst",
+  category: "Artificial Intelligence",
+},
   {
     title: "Threat Intelligence",
     description:
@@ -97,6 +105,8 @@ const navigationItems: NavigationItem[] = [
     route: "/ml",
     category: "Machine Learning",
   },
+
+
   {
     title: "SOAR Actions",
     description:
