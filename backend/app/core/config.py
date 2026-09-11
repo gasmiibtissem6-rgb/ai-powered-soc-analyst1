@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     # Keycloak / OpenID Connect
+    KEYCLOAK_ADMIN_CLIENT_ID: str = "soc-admin-service"
+    KEYCLOAK_ADMIN_CLIENT_SECRET: str = ""
     KEYCLOAK_URL: str = "http://keycloak:8080"
     KEYCLOAK_ISSUER: str = "http://localhost:8080/realms/soc"
     KEYCLOAK_REALM: str = "soc"

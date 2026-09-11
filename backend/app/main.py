@@ -1,7 +1,7 @@
 import asyncio
 import time
 from contextlib import asynccontextmanager
-
+from app.api import admin_users
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -329,7 +329,7 @@ async def prometheus_metrics():
 # =========================================================
 # ROUTERS
 # =========================================================
-
+app.include_router(admin_users.router)
 app.include_router(ml.router)
 app.include_router(auth_router)
 app.include_router(alerts_router)
