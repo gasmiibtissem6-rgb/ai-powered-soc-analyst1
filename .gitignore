@@ -22,3 +22,6 @@ backend/data/qdrant_storage/
 # Local TLS certificates / private keys
 infrastructure/traefik/certs/*.key
 infrastructure/traefik/certs/*.crt
+
+# Local Keycloak recovery backup
+keycloak-data-backup/

@@ -1,5 +1,4 @@
 from typing import List
-
 from fastapi import (
     APIRouter,
     Depends,
@@ -7,7 +6,7 @@ from fastapi import (
     status,
 )
 from sqlalchemy.orm import Session
-
+from app.core.config import settings
 from app.database.session import get_db
 
 from app.models.incident import Incident

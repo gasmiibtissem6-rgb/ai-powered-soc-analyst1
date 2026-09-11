@@ -461,24 +461,128 @@ Return JSON only.
         # 10. CLEAN AND VALIDATE TEXT FIELDS
         # =====================================================
 
+                # =====================================================
+        # 10. CLEAN AND VALIDATE TEXT FIELDS
+        # =====================================================
+
         text_fields = [
             "summary",
             "explanation",
-            "recommendation",
             "mitre_technique",
         ]
 
         for field in text_fields:
+
             value = result.get(field)
 
             if value is None:
+
                 result[field] = ""
+
+            elif isinstance(value, list):
+
+                result[field] = " ".join(
+                    str(item).strip()
+                    for item in value
+                    if str(item).strip()
+                )
+
+            elif isinstance(value, dict):
+
+                result[field] = json.dumps(
+                    value,
+                    ensure_ascii=False,
+                )
+
             else:
+
                 result[field] = str(
                     value
                 ).strip()
 
-        invalid_placeholders = {
+
+        # -----------------------------------------------------
+        # Normalize recommendation separately
+        # -----------------------------------------------------
+
+        recommendation = result.get(
+            "recommendation"
+        )
+
+
+        if recommendation is None:
+
+            result["recommendation"] = ""
+
+
+        elif isinstance(
+            recommendation,
+            list,
+        ):
+
+            normalized_recommendations = []
+
+            for item in recommendation:
+
+                item_text = str(
+                    item
+                ).strip()
+
+                if not item_text:
+                    continue
+
+                normalized_recommendations.append(
+                    item_text
+                )
+
+
+            result["recommendation"] = "\n".join(
+                f"{index}. {item}"
+                for index, item in enumerate(
+                    normalized_recommendations,
+                    start=1,
+                )
+            )
+
+
+        elif isinstance(
+            recommendation,
+            dict,
+        ):
+
+            normalized_recommendations = []
+
+            for key, value in recommendation.items():
+
+                item_text = str(
+                    value
+                ).strip()
+
+                if not item_text:
+                    continue
+
+                normalized_recommendations.append(
+                    f"{key}: {item_text}"
+                )
+
+
+            result["recommendation"] = "\n".join(
+                f"{index}. {item}"
+                for index, item in enumerate(
+                    normalized_recommendations,
+                    start=1,
+                )
+            )
+
+
+        else:
+
+            result["recommendation"] = str(
+                recommendation
+            ).strip()
+
+
+            invalid_placeholders = {
             "",
             "...",
             "summary",
@@ -697,9 +801,9 @@ Return plain text only.
             ) from exc
 
         except Exception as exc:
-            raise RuntimeError(
-                "LLM_REQUEST_FAILED: provider request failed."
-            ) from exc
+         raise RuntimeError(
+        f"LLM_REQUEST_FAILED: {type(exc).__name__}: {exc}"
+    ) from exc
 
         # =====================================================
         # GET ANSWER

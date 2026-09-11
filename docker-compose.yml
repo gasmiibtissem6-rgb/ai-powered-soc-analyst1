@@ -112,20 +112,15 @@ services:
       - shuffle
 
     labels:
-      - "traefik.enable=true"
+     - "traefik.enable=true"
 
-      - "traefik.http.routers.soc-api.rule=Host(`soc.local`)"
-      - "traefik.http.routers.soc-api.entrypoints=websecure"
-      - "traefik.http.routers.soc-api.tls=true"
+     - "traefik.docker.network=ai-powered-soc-analyst_default"
 
-      - "traefik.http.services.soc-api.loadbalancer.server.port=8000"
+     - "traefik.http.routers.soc-api.rule=Host(`soc.local`)"
+     - "traefik.http.routers.soc-api.entrypoints=websecure"
+     - "traefik.http.routers.soc-api.tls=true"
 
-      - "traefik.http.routers.soc-api-http.rule=Host(`soc.local`)"
-      - "traefik.http.routers.soc-api-http.entrypoints=web"
-      - "traefik.http.routers.soc-api-http.middlewares=https-redirect"
-
-      - "traefik.http.middlewares.https-redirect.redirectscheme.scheme=https"
-      - "traefik.http.middlewares.https-redirect.redirectscheme.permanent=true"
+     - "traefik.http.services.soc-api.loadbalancer.server.port=8000"
 
     depends_on:
       postgres:
