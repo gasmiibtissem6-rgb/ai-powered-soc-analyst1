@@ -18,6 +18,9 @@ type SeverityMetrics = {
   count: number;
 };
 
+type SeverityMetricsResponse =
+  | SeverityMetrics[]
+  | Record<string, number>;
 
 type Incident = {
   id: number;
@@ -82,9 +85,9 @@ export default function DashboardPage() {
 
 
         const severityData =
-          await apiRequest<any>(
+               await apiRequest<SeverityMetricsResponse>(
             "/metrics/severity"
-          );
+  );
 
 
 

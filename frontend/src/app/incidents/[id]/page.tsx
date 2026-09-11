@@ -269,37 +269,7 @@ const [resumeLoading, setResumeLoading] =
 
   }
 
-  async function runFullSOCInvestigation() {
-  try {
-    setWorkflowLoading(true);
-    setWorkflowError(null);
 
-    const result =
-      await apiRequest<AgentWorkflowResponse>(
-        `/agents/analyze/${id}`,
-        {
-          method: "POST",
-        }
-      );
-
-    setWorkflowResult(result);
-
-  } catch (error) {
-    console.error(
-      "SOC workflow failed:",
-      error
-    );
-
-    setWorkflowError(
-      error instanceof Error
-        ? error.message
-        : "SOC workflow failed"
-    );
-
-  } finally {
-    setWorkflowLoading(false);
-  }
-}
 
 
 
@@ -309,7 +279,8 @@ async function runFullSOCWorkflow() {
     setWorkflowLoading(true);
     setWorkflowError(null);
 
-    const result = await apiRequest<any>(
+    const result =
+  await apiRequest<AgentWorkflowResponse>(
       `/agents/analyze/${id}`,
       {
         method: "POST",
@@ -375,23 +346,23 @@ async function resumeSOCWorkflow(
     setResumeLoading(true);
     setWorkflowError(null);
 
-    const result = await apiRequest<any>(
-      `/agents/resume/${workflowThreadId}`,
-      {
-        method: "POST",
-
-        body: JSON.stringify({
-          approved,
-          comment:
-            humanComment.trim() ||
-            (
-              approved
-                ? "Approved from SOC frontend"
-                : "Rejected from SOC frontend"
-            ),
-        }),
-      }
-    );
+    const result =
+      await apiRequest<AgentWorkflowResponse>(
+        `/agents/resume/${workflowThreadId}`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            approved,
+            comment:
+              humanComment.trim() ||
+              (
+                approved
+                  ? "Approved from SOC frontend"
+                  : "Rejected from SOC frontend"
+              ),
+          }),
+        }
+      );
 
     setWorkflowResult(result);
 
