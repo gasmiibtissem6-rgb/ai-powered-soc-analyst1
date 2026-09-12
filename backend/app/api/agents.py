@@ -2,7 +2,7 @@ import logging
 
 from typing import Any, Dict, Optional
 from uuid import uuid4
-
+from app.services.soar_service import SOARService
 from fastapi import (
     APIRouter,
     Depends,
@@ -756,6 +756,7 @@ def save_soar_action(
             )
             is True
         )
+
         requires_approval = True
 
     else:
@@ -787,21 +788,14 @@ def save_soar_action(
 
     db_action = SOARAction(
         incident_id=incident_id,
-
         action_type=action_type,
-
         target=target,
-
         status=action_status,
-
         requires_approval=(
             requires_approval
         ),
-
         approved=approved,
-
         result=None,
-
         executed_at=None,
     )
 
@@ -818,8 +812,49 @@ def save_soar_action(
         )
 
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
             detail="Unable to save SOAR action",
+        ) from exc
+
+    SOARService.log_action_event(
+        db=db,
+        action=db_action,
+        event_type="created",
+        previous_status=None,
+        new_status="pending",
+        details={
+            "source": "soc_agent_workflow",
+            "action_type": db_action.action_type,
+            "target": db_action.target,
+            "requires_approval": (
+                db_action.requires_approval
+            ),
+        },
+    )
+
+    if approved:
+        SOARService.log_action_event(
+            db=db,
+            action=db_action,
+            event_type="approved",
+            previous_status="pending",
+            new_status="approved",
+            details={
+                "source": "soc_agent_workflow",
+                "action_type": db_action.action_type,
+                "target": db_action.target,
+                "human_review_required": (
+                    human_review_required
+                ),
+                "human_review_status": (
+                    human_review.get("status")
+                ),
+                "human_comment": (
+                    human_review.get("comment")
+                ),
+            },
         )
 
     return db_action

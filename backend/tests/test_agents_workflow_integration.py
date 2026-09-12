@@ -10,6 +10,7 @@ from app.models.ai_analysis import AIAnalysis
 from app.models.incident import Incident
 from app.models.report import SOCReport
 from app.models.soar_action import SOARAction
+from app.models.soar_action_log import SOARActionLog
 
 
 # =========================================================
@@ -918,9 +919,129 @@ def test_hitl_workflow_resume_persists_results(
         == "approved"
     )
 
+        # =====================================================
+    # 7. PERSISTED SOAR AUDIT LOGS
     # =====================================================
-    # 7. RESPONSE REFERENCES PERSISTED OBJECTS
+
+    soar_logs = [
+        obj
+        for obj in db.added
+        if isinstance(
+            obj,
+            SOARActionLog,
+        )
+    ]
+
+    assert len(
+        soar_logs
+    ) == 2
+
+    created_log = soar_logs[0]
+    approved_log = soar_logs[1]
+
+    assert (
+        created_log.action_id
+        == action.id
+    )
+
+    assert (
+        created_log.incident_id
+        == incident.id
+    )
+
+    assert (
+        created_log.event_type
+        == "created"
+    )
+
+    assert (
+        created_log.previous_status
+        is None
+    )
+
+    assert (
+        created_log.new_status
+        == "pending"
+    )
+
+    assert (
+        created_log.details[
+            "source"
+        ]
+        == "soc_agent_workflow"
+    )
+
+    assert (
+        created_log.details[
+            "action_type"
+        ]
+        == "block_ip"
+    )
+
+    assert (
+        created_log.details[
+            "target"
+        ]
+        == "203.0.113.50"
+    )
+
+    assert (
+        approved_log.action_id
+        == action.id
+    )
+
+    assert (
+        approved_log.incident_id
+        == incident.id
+    )
+
+    assert (
+        approved_log.event_type
+        == "approved"
+    )
+
+    assert (
+        approved_log.previous_status
+        == "pending"
+    )
+
+    assert (
+        approved_log.new_status
+        == "approved"
+    )
+
+    assert (
+        approved_log.details[
+            "source"
+        ]
+        == "soc_agent_workflow"
+    )
+
+    assert (
+        approved_log.details[
+            "human_review_required"
+        ]
+        is True
+    )
+
+    assert (
+        approved_log.details[
+            "human_review_status"
+        ]
+        == "approved"
+    )
+
+    assert (
+        approved_log.details[
+            "human_comment"
+        ]
+        == "Approved by SOC administrator"
+    )
+
     # =====================================================
+    # 8. RESPONSE REFERENCES PERSISTED OBJECTS
+    # =====================================================
+
 
     assert (
         completed_result[
