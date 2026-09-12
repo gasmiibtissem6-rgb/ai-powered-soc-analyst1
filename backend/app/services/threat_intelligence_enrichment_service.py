@@ -145,12 +145,62 @@ class ThreatIntelligenceEnrichmentService:
 
             return result
 
+                # -------------------------------------------------
+        # Private / local / reserved IP
+        # -------------------------------------------------
+
+            if not parsed_ip.is_global:
+             if parsed_ip.is_private:
+                result["scope"] = "private"
+            else:
+                result["scope"] = "non-public"
+
+            reason = (
+                "Non-public IP address. "
+                "External threat intelligence lookup skipped."
+            )
+
+            result["providers"] = {
+                "abuseipdb": {
+                    "status": "skipped",
+                    "reason": reason,
+                },
+                "virustotal": {
+                    "status": "skipped",
+                    "reason": reason,
+                },
+                "otx": {
+                    "status": "skipped",
+                    "reason": reason,
+                },
+                "misp": {
+                    "status": "skipped",
+                    "reason": reason,
+                },
+            }
+
+            return result
+
         # -------------------------------------------------
         # Private / local / reserved IP
         # -------------------------------------------------
 
         if not parsed_ip.is_global:
-            result["scope"] = "private"
+            private_networks = (
+                ipaddress.ip_network("10.0.0.0/8"),
+                ipaddress.ip_network("172.16.0.0/12"),
+                ipaddress.ip_network("192.168.0.0/16"),
+                ipaddress.ip_network("fc00::/7"),
+            )
+
+            if any(
+                parsed_ip in network
+                for network in private_networks
+                if parsed_ip.version == network.version
+            ):
+                result["scope"] = "private"
+            else:
+                result["scope"] = "non-public"
 
             reason = (
                 "Non-public IP address. "
@@ -182,6 +232,31 @@ class ThreatIntelligenceEnrichmentService:
         # Public IP
         # -------------------------------------------------
 
+        # -------------------------------------------------
+        # Public IP
+        # -------------------------------------------------
+
+        try:
+            parsed_ip = ipaddress.ip_address(
+                ip_address
+            )
+
+        except ValueError:
+            result["scope"] = "invalid"
+
+            # ...
+            # providers
+            # ...
+
+            return result
+
+        # ICI ON EST SORTI DU except
+
+        if not parsed_ip.is_global:
+            # ...
+            return result
+
+        # seulement les vraies IP globales arrivent ici
         result["scope"] = "public"
 
         result["providers"]["abuseipdb"] = (
