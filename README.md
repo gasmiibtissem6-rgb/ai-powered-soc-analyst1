@@ -273,7 +273,7 @@ POST /threat-intelligence/otx/url
 
 ### Redis Cache
 
-Threat Intelligence IP enrichment is cached using **Redis**.
+Threat Intelligence enrichment is cached using **Redis** for supported IOC types including IP addresses, domains, URLs, and file hashes.
 
 The cache:
 
@@ -307,7 +307,9 @@ status: not_configured
 
 and the SOC workflow continues normally.
 
-**MISP is not activated in the current prototype environment and must not be considered a live validated provider.**
+**MISP is integrated and validated in the current prototype environment.**
+
+The SOC backend can query MISP for IP addresses, domains, URLs, and file hashes. Unlike Internet-based Threat Intelligence providers, MISP may also be queried for private, reserved, lab, or documentation addresses because it acts as an internal Threat Intelligence platform.
 
 ---
 
@@ -507,9 +509,9 @@ Potentially disruptive actions are therefore not executed against real infrastru
 
 ### Shuffle
 
-Shuffle was considered as an external SOAR platform during the project.
+The backend includes an optional integration with **Shuffle SOAR** through webhook-based workflows.
 
-However, **Shuffle is not integrated into the main prototype stack**. The validated prototype uses the internal FastAPI SOAR implementation described above.
+Shuffle integration is configurable through `SHUFFLE_*` environment variables. The internal FastAPI SOAR remains the primary response engine and supports approval, safety controls, dry-run execution, and audit logging.
 
 ---
 
@@ -591,11 +593,20 @@ GROQ_API_KEY
 ABUSEIPDB_API_KEY
 VIRUSTOTAL_API_KEY
 OTX_API_KEY
+MISP_API_KEY
 ```
 
 The application Secret Manager attempts to obtain sensitive values from Vault and can fall back to application configuration when appropriate.
 
-**Important:** the current Docker Compose environment uses Vault in development mode. Production deployment requires a persistent and properly secured Vault configuration.
+**Important:** The current Docker Compose environment uses persistent Vault file storage with a Docker volume and Shamir sealing.
+
+Vault is initialized with a dedicated backend policy. The FastAPI backend uses a renewable read-only token and cannot modify stored secrets.
+
+After a complete Vault restart, the current prototype requires a manual unseal operation before the backend can access Vault secrets.
+
+For a production deployment, Vault should use an appropriate production-grade seal and operational security configuration.
+
+
 
 Never commit real API keys, Vault tokens, passwords, JWTs, or `.env` files to Git.
 
