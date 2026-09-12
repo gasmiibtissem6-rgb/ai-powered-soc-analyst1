@@ -116,11 +116,19 @@ services:
 
      - "traefik.docker.network=ai-powered-soc-analyst_default"
 
+      # HTTPS router
      - "traefik.http.routers.soc-api.rule=Host(`soc.local`)"
      - "traefik.http.routers.soc-api.entrypoints=websecure"
      - "traefik.http.routers.soc-api.tls=true"
-
      - "traefik.http.services.soc-api.loadbalancer.server.port=8000"
+
+      # HTTP router -> HTTPS redirect
+     - "traefik.http.routers.soc-api-http.rule=Host(`soc.local`)"
+     - "traefik.http.routers.soc-api-http.entrypoints=web"
+     - "traefik.http.routers.soc-api-http.middlewares=soc-https-redirect"
+
+     - "traefik.http.middlewares.soc-https-redirect.redirectscheme.scheme=https"
+     - "traefik.http.middlewares.soc-https-redirect.redirectscheme.permanent=true"
 
     depends_on:
       postgres:
