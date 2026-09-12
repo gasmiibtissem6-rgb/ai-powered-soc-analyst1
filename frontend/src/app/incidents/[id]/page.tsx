@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import {
+  useParams,
+  useRouter,
+} from "next/navigation";
 
 import { apiRequest } from "@/lib/api";
 import { initKeycloak } from "@/lib/keycloak-auth";
@@ -41,7 +44,41 @@ type AIAnalysis = {
   model_used?: string | null;
 };
 
+type SOCReport = {
+  id: number;
 
+  incident_id: number;
+  ai_analysis_id?: number | null;
+  thread_id?: string | null;
+
+  title: string;
+  summary: string;
+  risk_level: string;
+
+  ml_status?: string | null;
+  ml_prediction?: string | null;
+  ml_probabilities?: Record<
+    string,
+    unknown
+  > | null;
+  ml_engine?: string | null;
+  ml_is_anomaly?: boolean | null;
+  ml_anomaly_score?: number | null;
+
+  mitre_technique?: string | null;
+  mitre_name?: string | null;
+
+  recommendation?: string | null;
+  response_status?: string | null;
+
+  human_review_status?: string | null;
+  human_comment?: string | null;
+
+  rag_sources?: string[] | null;
+  agent_trace?: string[] | null;
+
+  created_at: string;
+};
 type ThreatIntel = {
   incident_id: number;
 
@@ -150,6 +187,7 @@ type AgentWorkflowResponse = {
 export default function IncidentDetailsPage() {
 
   const params = useParams();
+  const router = useRouter();
 
   const id = params.id as string;
 
@@ -168,6 +206,14 @@ export default function IncidentDetailsPage() {
 
   const [threatIntel, setThreatIntel] =
     useState<ThreatIntel | null>(null);
+
+  const [
+  reports,
+  setReports,
+] =
+  useState<SOCReport[]>(
+    []
+  );
 
   const [loading, setLoading] =
   useState(true);
@@ -299,6 +345,7 @@ async function runFullSOCWorkflow() {
 
     if (
       result.status === "completed"
+
     ) {
       const analysisData =
         await apiRequest<AIAnalysis[]>(
@@ -313,6 +360,24 @@ async function runFullSOCWorkflow() {
           : null
       );
     }
+
+    try {
+  const reportsData =
+    await apiRequest<
+      SOCReport[]
+    >(
+      `/reports/incident/${id}`
+    );
+
+  setReports(
+    reportsData
+  );
+} catch (error) {
+  console.log(
+    "Unable to refresh SOC reports",
+    error
+  );
+}
 
   } catch (error) {
     console.error(
@@ -450,7 +515,24 @@ async function resumeSOCWorkflow(
             `/ai-analysis/incident/${id}`
           );
 
+        let reportsData:
+  SOCReport[] = [];
 
+
+try {
+  reportsData =
+    await apiRequest<
+      SOCReport[]
+    >(
+      `/reports/incident/${id}`
+    );
+
+} catch (error) {
+  console.log(
+    "No SOC reports available",
+    error
+  );
+}
 
         let threatData:
           ThreatIntel | null = null;
@@ -504,6 +586,9 @@ async function resumeSOCWorkflow(
           threatData
         );
 
+        setReports(
+  reportsData
+);
 
       } catch (error) {
 
@@ -1305,7 +1390,305 @@ async function resumeSOCWorkflow(
 
       </section>
 
+      {/* =================================================
+    SOC REPORTS
+================================================= */}
 
+<section
+  className="
+    rounded-xl
+    border
+    p-6
+  "
+>
+  <div
+    className="
+      flex
+      flex-col
+      gap-4
+      md:flex-row
+      md:items-center
+      md:justify-between
+    "
+  >
+    <div>
+      <h2
+        className="
+          text-xl
+          font-bold
+        "
+      >
+        SOC Reports
+      </h2>
+
+      <p
+        className="
+          mt-1
+          text-sm
+          text-slate-400
+        "
+      >
+        Reports generated for this incident
+        by the SOC workflow.
+      </p>
+    </div>
+
+    <button
+      type="button"
+      onClick={
+  () =>
+    router.push(
+      "/reports"
+    )
+}
+      className="
+        rounded-lg
+        border
+        border-slate-600
+        px-4
+        py-2
+        text-sm
+        hover:bg-slate-800
+      "
+    >
+      View All Reports
+    </button>
+  </div>
+
+
+  {
+    reports.length > 0 ? (
+      <div
+        className="
+          mt-5
+          space-y-4
+        "
+      >
+        {
+          reports.map(
+            (report) => (
+              <article
+                key={
+                  report.id
+                }
+                className="
+                  rounded-xl
+                  border
+                  border-slate-700
+                  bg-slate-900/20
+                  p-5
+                "
+              >
+                <div
+                  className="
+                    flex
+                    flex-col
+                    gap-3
+                    md:flex-row
+                    md:items-start
+                    md:justify-between
+                  "
+                >
+                  <div>
+                    <p
+                      className="
+                        text-sm
+                        text-cyan-300
+                      "
+                    >
+                      Report #
+                      {
+                        report.id
+                      }
+                    </p>
+
+                    <h3
+                      className="
+                        mt-1
+                        text-lg
+                        font-semibold
+                      "
+                    >
+                      {
+                        report.title
+                      }
+                    </h3>
+                  </div>
+
+                  <span
+                    className="
+                      w-fit
+                      rounded-full
+                      border
+                      border-slate-600
+                      px-3
+                      py-1
+                      text-xs
+                    "
+                  >
+                    Risk:{" "}
+                    {
+                      report.risk_level
+                    }
+                  </span>
+                </div>
+
+
+                <p
+                  className="
+                    mt-4
+                    text-sm
+                    leading-6
+                    text-slate-300
+                  "
+                >
+                  {
+                    report.summary
+                  }
+                </p>
+
+
+                {
+                  report.recommendation && (
+                    <div
+                      className="
+                        mt-4
+                        rounded-lg
+                        border
+                        border-cyan-500/20
+                        bg-cyan-500/5
+                        p-4
+                      "
+                    >
+                      <p
+                        className="
+                          text-xs
+                          uppercase
+                          tracking-wider
+                          text-cyan-300
+                        "
+                      >
+                        Recommendation
+                      </p>
+
+                      <p
+                        className="
+                          mt-2
+                          text-sm
+                          leading-6
+                        "
+                      >
+                        {
+                          report.recommendation
+                        }
+                      </p>
+                    </div>
+                  )
+                }
+
+
+                <div
+                  className="
+                    mt-4
+                    grid
+                    gap-3
+                    text-sm
+                    md:grid-cols-2
+                    xl:grid-cols-4
+                  "
+                >
+                  <div>
+                    <span
+                      className="
+                        text-slate-500
+                      "
+                    >
+                      MITRE:
+                    </span>{" "}
+                    {
+                      report.mitre_technique
+                      || "—"
+                    }
+                  </div>
+
+                  <div>
+                    <span
+                      className="
+                        text-slate-500
+                      "
+                    >
+                      ML:
+                    </span>{" "}
+                    {
+                      report.ml_prediction
+                      || report.ml_status
+                      || "—"
+                    }
+                  </div>
+
+                  <div>
+                    <span
+                      className="
+                        text-slate-500
+                      "
+                    >
+                      Human Review:
+                    </span>{" "}
+                    {
+                      report.human_review_status
+                      || "—"
+                    }
+                  </div>
+
+                  <div>
+                    <span
+                      className="
+                        text-slate-500
+                      "
+                    >
+                      Response:
+                    </span>{" "}
+                    {
+                      report.response_status
+                      || "—"
+                    }
+                  </div>
+                </div>
+
+
+                <p
+                  className="
+                    mt-4
+                    text-xs
+                    text-slate-500
+                  "
+                >
+                  Created:{" "}
+                  {
+                    new Date(
+                      report.created_at
+                    ).toLocaleString()
+                  }
+                </p>
+              </article>
+            )
+          )
+        }
+      </div>
+    ) : (
+      <p
+        className="
+          mt-5
+          text-sm
+          text-slate-500
+        "
+      >
+        No SOC report has been generated
+        for this incident yet.
+      </p>
+    )
+  }
+</section>
 
       {/* =================================================
           AI ANALYSIS
