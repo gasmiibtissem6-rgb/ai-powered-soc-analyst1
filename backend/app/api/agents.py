@@ -60,6 +60,7 @@ def update_incident_workflow_status(
     incident: Incident,
     workflow_status: str,
     workflow_error: Optional[str] = None,
+    workflow_thread_id: Optional[str] = None,
 ) -> None:
     """
     Persist the current SOC workflow state on the incident.
@@ -67,6 +68,11 @@ def update_incident_workflow_status(
 
     incident.workflow_status = workflow_status
     incident.workflow_error = workflow_error
+
+    if workflow_thread_id is not None:
+        incident.workflow_thread_id = (
+            workflow_thread_id
+        )
 
     try:
         db.commit()
@@ -77,7 +83,10 @@ def update_incident_workflow_status(
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unable to update incident workflow status",
+            detail=(
+                "Unable to update incident "
+                "workflow status"
+            ),
         )
 
 
@@ -1109,8 +1118,8 @@ def run_soc_workflow(
         workflow_error=None,
     )
 
-    # -----------------------------------------------------
-    # 2. Create LangGraph thread
+        # -----------------------------------------------------
+    # 1. Create LangGraph thread
     # -----------------------------------------------------
 
     thread_id = str(
@@ -1124,6 +1133,19 @@ def run_soc_workflow(
     }
 
     # -----------------------------------------------------
+    # 2. Mark workflow as running
+    #    and persist LangGraph thread
+    # -----------------------------------------------------
+
+    update_incident_workflow_status(
+        db=db,
+        incident=incident,
+        workflow_status="running",
+        workflow_error=None,
+        workflow_thread_id=thread_id,
+    )
+
+    # -----------------------------------------------------
     # 3. Initial state
     # -----------------------------------------------------
 
@@ -1133,7 +1155,6 @@ def run_soc_workflow(
         request=request,
         suricata_event=suricata_event,
     )
-
     # -----------------------------------------------------
     # 4. Run LangGraph
     # -----------------------------------------------------

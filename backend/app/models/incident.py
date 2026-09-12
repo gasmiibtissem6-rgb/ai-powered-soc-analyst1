@@ -97,6 +97,12 @@ class Incident(Base):
         nullable=True,
     )
 
+    workflow_thread_id: Mapped[Optional[str]] = mapped_column(
+    String(100),
+    nullable=True,
+    index=True,
+)
+
     # --------------------------------------------------
     # Correlation
     # --------------------------------------------------

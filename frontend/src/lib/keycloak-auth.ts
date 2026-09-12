@@ -2,74 +2,154 @@
 
 import keycloak from "./keycloak";
 
-let initPromise: Promise<boolean> | null = null;
 
-export function initKeycloak(): Promise<boolean> {
-  if (initPromise) {
-    console.log("[Keycloak] reusing init promise");
-    return initPromise;
+declare global {
+  var __socKeycloakInitPromise:
+    Promise<boolean> | undefined;
+}
+
+
+function getInitPromise():
+  Promise<boolean> | undefined {
+  return (
+    globalThis
+      .__socKeycloakInitPromise
+  );
+}
+
+
+function setInitPromise(
+  promise: Promise<boolean>
+) {
+  globalThis
+    .__socKeycloakInitPromise =
+    promise;
+}
+
+
+export function initKeycloak():
+  Promise<boolean> {
+  const existingPromise =
+    getInitPromise();
+
+  if (existingPromise) {
+    console.log(
+      "[Keycloak] reusing init promise"
+    );
+
+    return existingPromise;
   }
 
-  console.log("[Keycloak] init started");
 
-  initPromise = keycloak
-    .init({
-      onLoad: "check-sso",
-      pkceMethod: "S256",
-      checkLoginIframe: false,
-    })
-    .then((authenticated) => {
-      console.log(
-        "[Keycloak] init completed:",
-        authenticated,
+  console.log(
+    "[Keycloak] init started"
+  );
+
+
+  const promise =
+    keycloak
+      .init({
+        onLoad: "check-sso",
+        pkceMethod: "S256",
+        checkLoginIframe: false,
+      })
+      .then(
+        (authenticated) => {
+          console.log(
+            "[Keycloak] init completed:",
+            authenticated
+          );
+
+          return authenticated;
+        }
+      )
+      .catch(
+        (error) => {
+          console.error(
+            "[Keycloak] init failed:",
+            error
+          );
+
+          /*
+           * IMPORTANT:
+           *
+           * Do not clear the init promise here.
+           *
+           * keycloak-js does not allow init()
+           * to be called twice on the same
+           * Keycloak instance.
+           */
+          throw error;
+        }
       );
 
-      return authenticated;
-    })
-    .catch((error) => {
-      console.error(
-        "[Keycloak] init failed:",
-        error,
-      );
 
-      initPromise = null;
-      throw error;
-    });
+  setInitPromise(
+    promise
+  );
 
-  return initPromise;
+  return promise;
 }
+
 
 export async function loginWithKeycloak() {
   await initKeycloak();
 
   await keycloak.login({
-    redirectUri: window.location.origin,
+    redirectUri:
+      `${window.location.origin}/dashboard`,
   });
 }
+
 
 export async function logoutFromKeycloak() {
   await initKeycloak();
 
   await keycloak.logout({
-    redirectUri: `${window.location.origin}/login`,
+    redirectUri:
+      `${window.location.origin}/login`,
   });
 }
 
+
 export function getKeycloakToken() {
-  return keycloak.token ?? null;
+  return (
+    keycloak.token ??
+    null
+  );
 }
+
 
 export async function refreshKeycloakToken() {
-  if (!keycloak.authenticated) {
+  await initKeycloak();
+
+  if (
+    !keycloak.authenticated
+  ) {
     return false;
   }
 
+
   try {
-    await keycloak.updateToken(30);
+    await keycloak.updateToken(
+      30
+    );
+
     return true;
-  } catch {
+
+  } catch (
+    error
+  ) {
+    console.error(
+      "[Keycloak] token refresh failed:",
+      error
+    );
+
     return false;
   }
 }
 
-export { keycloak };
+
+export {
+  keycloak,
+};

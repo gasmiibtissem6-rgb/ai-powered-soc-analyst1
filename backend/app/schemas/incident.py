@@ -74,7 +74,7 @@ class IncidentResponse(IncidentBase):
 
     workflow_status: str
     workflow_error: Optional[str] = None
-
+    workflow_thread_id: Optional[str] = None
     model_config = ConfigDict(
         from_attributes=True
     )
