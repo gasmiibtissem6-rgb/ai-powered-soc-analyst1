@@ -574,15 +574,16 @@ Return JSON only.
                 )
             )
 
-
         else:
-
             result["recommendation"] = str(
                 recommendation
             ).strip()
 
+        # =====================================================
+        # INVALID PLACEHOLDERS
+        # =====================================================
 
-            invalid_placeholders = {
+        invalid_placeholders = {
             "",
             "...",
             "summary",
@@ -598,6 +599,85 @@ Return JSON only.
             "recommended remediation actions",
             "complete remediation actions adapted to the incident",
         }
+
+        # =====================================================
+        # 11. SUMMARY FALLBACK
+        # =====================================================
+
+        if result["summary"].lower() in invalid_placeholders:
+            result["summary"] = (
+                f"Suspicious security activity was detected: "
+                f"{title}. {description}"
+            )
+
+        # =====================================================
+        # 12. EXPLANATION FALLBACK
+        # =====================================================
+
+        if result["explanation"].lower() in invalid_placeholders:
+
+            if threat_intelligence:
+                result["explanation"] = (
+                    "The incident shows suspicious activity that "
+                    "requires investigation. Threat intelligence "
+                    "data was reviewed together with the observed "
+                    "security behavior. The reputation of an IP "
+                    "address alone is not sufficient to determine "
+                    "whether the incident is benign."
+                )
+            else:
+                result["explanation"] = (
+                    "The incident contains suspicious activity "
+                    "that requires further investigation using "
+                    "authentication, network and security logs."
+                )
+
+        # =====================================================
+        # 13. RECOMMENDATION FALLBACK
+        # =====================================================
+
+        if result["recommendation"].lower() in invalid_placeholders:
+            result["recommendation"] = (
+                "Review authentication logs, network flows and "
+                "firewall logs. Validate the real source of the "
+                "activity before blocking an IP or executing "
+                "containment actions."
+            )
+
+        # =====================================================
+        # 14. MITRE FALLBACK
+        # =====================================================
+
+        if result["mitre_technique"].lower() in invalid_placeholders:
+
+            incident_text = (
+                f"{title} {description}"
+            ).lower()
+
+            if (
+                "failed login" in incident_text
+                or "login attempts" in incident_text
+                or "brute force" in incident_text
+            ):
+                result["mitre_technique"] = (
+                    "T1110 - Brute Force"
+                )
+
+            elif (
+                "port scan" in incident_text
+                or "network scan" in incident_text
+                or "nmap" in incident_text
+            ):
+                result["mitre_technique"] = (
+                    "T1046 - Network Service Discovery"
+                )
+
+            else:
+                result["mitre_technique"] = ""
+
+        # =====================================================
+        # 15. RETURN
+        # =====================================================
 
         # =====================================================
         # 11. SUMMARY FALLBACK

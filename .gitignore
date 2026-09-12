@@ -25,3 +25,9 @@ infrastructure/traefik/certs/*.crt
 
 # Local Keycloak recovery backup
 keycloak-data-backup/
+
+# Local Vault secrets
+.vault-local/
+
+# Local backups
+backups/

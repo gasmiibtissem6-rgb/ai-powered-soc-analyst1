@@ -39,6 +39,7 @@ class ThreatIntelligenceEnrichmentService:
             settings.REDIS_URL,
             decode_responses=True,
         )
+
         self.cache_ttl_seconds = 900
 
     # =====================================================
@@ -65,6 +66,7 @@ class ThreatIntelligenceEnrichmentService:
                 json.dumps(value),
                 ex=self.cache_ttl_seconds,
             )
+
         except Exception:
             # Redis must never block TI enrichment.
             pass
@@ -85,7 +87,10 @@ class ThreatIntelligenceEnrichmentService:
             return {
                 "status": "error",
                 "provider": provider_name,
-                "error": "Threat intelligence provider request failed",
+                "error": (
+                    "Threat intelligence provider "
+                    "request failed"
+                ),
             }
 
     # =====================================================
@@ -98,7 +103,9 @@ class ThreatIntelligenceEnrichmentService:
     ):
         cache_key = f"soc:ti:ip:{ip_address}"
 
-        cached = self._get_cached(cache_key)
+        cached = self._get_cached(
+            cache_key
+        )
 
         if cached is not None:
             return cached
@@ -143,70 +150,61 @@ class ThreatIntelligenceEnrichmentService:
                 },
             }
 
-            return result
-
-                # -------------------------------------------------
-        # Private / local / reserved IP
-        # -------------------------------------------------
-
-            if not parsed_ip.is_global:
-             if parsed_ip.is_private:
-                result["scope"] = "private"
-            else:
-                result["scope"] = "non-public"
-
-            reason = (
-                "Non-public IP address. "
-                "External threat intelligence lookup skipped."
+            self._set_cached(
+                cache_key,
+                result,
             )
 
-            result["providers"] = {
-                "abuseipdb": {
-                    "status": "skipped",
-                    "reason": reason,
-                },
-                "virustotal": {
-                    "status": "skipped",
-                    "reason": reason,
-                },
-                "otx": {
-                    "status": "skipped",
-                    "reason": reason,
-                },
-                "misp": {
-                    "status": "skipped",
-                    "reason": reason,
-                },
-            }
-
             return result
 
         # -------------------------------------------------
-        # Private / local / reserved IP
+        # Private / local / reserved / documentation IP
         # -------------------------------------------------
 
         if not parsed_ip.is_global:
             private_networks = (
-                ipaddress.ip_network("10.0.0.0/8"),
-                ipaddress.ip_network("172.16.0.0/12"),
-                ipaddress.ip_network("192.168.0.0/16"),
-                ipaddress.ip_network("fc00::/7"),
+                ipaddress.ip_network(
+                    "10.0.0.0/8"
+                ),
+                ipaddress.ip_network(
+                    "172.16.0.0/12"
+                ),
+                ipaddress.ip_network(
+                    "192.168.0.0/16"
+                ),
+                ipaddress.ip_network(
+                    "fc00::/7"
+                ),
             )
 
-            if any(
+            is_private_network = any(
                 parsed_ip in network
                 for network in private_networks
-                if parsed_ip.version == network.version
-            ):
+                if (
+                    parsed_ip.version
+                    == network.version
+                )
+            )
+
+            if is_private_network:
                 result["scope"] = "private"
+
             else:
                 result["scope"] = "non-public"
 
             reason = (
                 "Non-public IP address. "
-                "External threat intelligence lookup skipped."
+                "External threat intelligence "
+                "lookup skipped."
             )
 
+            # External Internet TI providers are skipped
+            # for non-public addresses.
+            #
+            # MISP is still queried because it is an
+            # internal Threat Intelligence platform and
+            # may contain private, reserved, lab or
+            # documentation addresses.
             result["providers"] = {
                 "abuseipdb": {
                     "status": "skipped",
@@ -220,50 +218,36 @@ class ThreatIntelligenceEnrichmentService:
                     "status": "skipped",
                     "reason": reason,
                 },
-                "misp": {
-                    "status": "skipped",
-                    "reason": reason,
-                },
+                "misp": self._safe_call(
+                    "MISP",
+                    lambda: (
+                        self.misp.check_ip(
+                            ip_address
+                        )
+                    ),
+                ),
             }
 
-            return result
-
-        # -------------------------------------------------
-        # Public IP
-        # -------------------------------------------------
-
-        # -------------------------------------------------
-        # Public IP
-        # -------------------------------------------------
-
-        try:
-            parsed_ip = ipaddress.ip_address(
-                ip_address
+            self._set_cached(
+                cache_key,
+                result,
             )
 
-        except ValueError:
-            result["scope"] = "invalid"
-
-            # ...
-            # providers
-            # ...
-
             return result
 
-        # ICI ON EST SORTI DU except
+        # -------------------------------------------------
+        # Public IP
+        # -------------------------------------------------
 
-        if not parsed_ip.is_global:
-            # ...
-            return result
-
-        # seulement les vraies IP globales arrivent ici
         result["scope"] = "public"
 
         result["providers"]["abuseipdb"] = (
             self._safe_call(
                 "AbuseIPDB",
-                lambda: self.abuseipdb.check_ip(
-                    ip_address
+                lambda: (
+                    self.abuseipdb.check_ip(
+                        ip_address
+                    )
                 ),
             )
         )
@@ -271,8 +255,10 @@ class ThreatIntelligenceEnrichmentService:
         result["providers"]["virustotal"] = (
             self._safe_call(
                 "VirusTotal",
-                lambda: self.virustotal.check_ip(
-                    ip_address
+                lambda: (
+                    self.virustotal.check_ip(
+                        ip_address
+                    )
                 ),
             )
         )
@@ -280,8 +266,10 @@ class ThreatIntelligenceEnrichmentService:
         result["providers"]["otx"] = (
             self._safe_call(
                 "AlienVault OTX",
-                lambda: self.otx.check_ip(
-                    ip_address
+                lambda: (
+                    self.otx.check_ip(
+                        ip_address
+                    )
                 ),
             )
         )
@@ -289,8 +277,10 @@ class ThreatIntelligenceEnrichmentService:
         result["providers"]["misp"] = (
             self._safe_call(
                 "MISP",
-                lambda: self.misp.check_ip(
-                    ip_address
+                lambda: (
+                    self.misp.check_ip(
+                        ip_address
+                    )
                 ),
             )
         )
@@ -310,32 +300,54 @@ class ThreatIntelligenceEnrichmentService:
         self,
         domain,
     ):
-        return {
+        cache_key = (
+            f"soc:ti:domain:{domain}"
+        )
+
+        cached = self._get_cached(
+            cache_key
+        )
+
+        if cached is not None:
+            return cached
+
+        result = {
             "ioc_type": "domain",
             "value": domain,
             "providers": {
                 "virustotal": self._safe_call(
                     "VirusTotal",
-                    lambda: self.virustotal.check_domain(
-                        domain
+                    lambda: (
+                        self.virustotal.check_domain(
+                            domain
+                        )
                     ),
                 ),
-
                 "otx": self._safe_call(
                     "AlienVault OTX",
-                    lambda: self.otx.check_domain(
-                        domain
+                    lambda: (
+                        self.otx.check_domain(
+                            domain
+                        )
                     ),
                 ),
-
                 "misp": self._safe_call(
                     "MISP",
-                    lambda: self.misp.check_domain(
-                        domain
+                    lambda: (
+                        self.misp.check_domain(
+                            domain
+                        )
                     ),
                 ),
             },
         }
+
+        self._set_cached(
+            cache_key,
+            result,
+        )
+
+        return result
 
     # =====================================================
     # URL
@@ -345,32 +357,54 @@ class ThreatIntelligenceEnrichmentService:
         self,
         url,
     ):
-        return {
+        cache_key = (
+            f"soc:ti:url:{url}"
+        )
+
+        cached = self._get_cached(
+            cache_key
+        )
+
+        if cached is not None:
+            return cached
+
+        result = {
             "ioc_type": "url",
             "value": url,
             "providers": {
                 "virustotal": self._safe_call(
                     "VirusTotal",
-                    lambda: self.virustotal.check_url(
-                        url
+                    lambda: (
+                        self.virustotal.check_url(
+                            url
+                        )
                     ),
                 ),
-
                 "otx": self._safe_call(
                     "AlienVault OTX",
-                    lambda: self.otx.check_url(
-                        url
+                    lambda: (
+                        self.otx.check_url(
+                            url
+                        )
                     ),
                 ),
-
                 "misp": self._safe_call(
                     "MISP",
-                    lambda: self.misp.check_url(
-                        url
+                    lambda: (
+                        self.misp.check_url(
+                            url
+                        )
                     ),
                 ),
             },
         }
+
+        self._set_cached(
+            cache_key,
+            result,
+        )
+
+        return result
 
     # =====================================================
     # HASH
@@ -381,30 +415,52 @@ class ThreatIntelligenceEnrichmentService:
         file_hash,
         hash_type=None,
     ):
-        return {
+        cache_key = (
+            f"soc:ti:hash:{file_hash}"
+        )
+
+        cached = self._get_cached(
+            cache_key
+        )
+
+        if cached is not None:
+            return cached
+
+        result = {
             "ioc_type": "hash",
             "hash_type": hash_type,
             "value": file_hash,
             "providers": {
                 "virustotal": self._safe_call(
                     "VirusTotal",
-                    lambda: self.virustotal.check_hash(
-                        file_hash
+                    lambda: (
+                        self.virustotal.check_hash(
+                            file_hash
+                        )
                     ),
                 ),
-
                 "otx": self._safe_call(
                     "AlienVault OTX",
-                    lambda: self.otx.check_hash(
-                        file_hash
+                    lambda: (
+                        self.otx.check_hash(
+                            file_hash
+                        )
                     ),
                 ),
-
                 "misp": self._safe_call(
                     "MISP",
-                    lambda: self.misp.check_hash(
-                        file_hash
+                    lambda: (
+                        self.misp.check_hash(
+                            file_hash
+                        )
                     ),
                 ),
             },
         }
+
+        self._set_cached(
+            cache_key,
+            result,
+        )
+
+        return result
