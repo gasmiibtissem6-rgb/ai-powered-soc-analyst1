@@ -281,6 +281,11 @@ export default function Home() {
   const [currentUser, setCurrentUser] =
   useState<CurrentUser | null>(null);
 
+  const isAdmin =
+  currentUser?.roles?.some(
+    (role) => role.toLowerCase() === "admin"
+  ) ?? false;
+
   const [metrics, setMetrics] =
     useState<DashboardMetrics | null>(null);
 
@@ -2018,7 +2023,7 @@ const latestPipelineIncident =
                           </span>
                         </div>
 
-                        {waitingForApproval ? (
+                        {isAdmin && waitingForApproval ? (
                           <div className="action-buttons">
                             <button
                               className="approve"
@@ -2058,8 +2063,9 @@ const latestPipelineIncident =
                                 : "Reject"}
                             </button>
                           </div>
-                        ) : status ===
-                          "approved" ? (
+                        ) : isAdmin &&
+  status === "approved" ? (
+
                           <button
                             className="approve"
                             disabled={
