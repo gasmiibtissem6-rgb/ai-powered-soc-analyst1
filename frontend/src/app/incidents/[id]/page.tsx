@@ -35,6 +35,8 @@ type Incident = {
   workflow_status?: string;
   workflow_error?: string | null;
   workflow_thread_id?: string | null;
+
+  correlation_id?: string | null;
 };
 
 
@@ -120,6 +122,38 @@ type ThreatIntel = {
   ioc_count: number;
 
   threat_intelligence: unknown[];
+};
+
+
+type CorrelationIncident = {
+  id: number;
+  title: string;
+  description?: string | null;
+  severity: string;
+  status: string;
+  source?: string | null;
+  hostname?: string | null;
+  source_ip?: string | null;
+  destination_ip?: string | null;
+  username?: string | null;
+  assigned_to?: string | null;
+  workflow_status?: string | null;
+  workflow_error?: string | null;
+  correlation_id?: string | null;
+  created_at: string;
+};
+
+
+type CorrelationGroup = {
+  correlation_id: string;
+  incident_count: number;
+  sources: string[];
+  source_ips: string[];
+  destination_ips: string[];
+  highest_severity: string;
+  first_seen: string;
+  last_seen: string;
+  incidents: CorrelationIncident[];
 };
 
 
@@ -277,6 +311,15 @@ export default function IncidentDetailsPage() {
   ] =
     useState<SOCReport[]>(
       []
+    );
+
+
+  const [
+    correlationGroup,
+    setCorrelationGroup,
+  ] =
+    useState<CorrelationGroup | null>(
+      null
     );
 
 
@@ -798,6 +841,35 @@ export default function IncidentDetailsPage() {
         }
 
 
+        let correlationData:
+          CorrelationGroup | null =
+            null;
+
+
+        if (
+          incidentData.correlation_id
+        ) {
+          try {
+            correlationData =
+              await apiRequest<
+                CorrelationGroup
+              >(
+                `/incidents/correlation/${encodeURIComponent(
+                  incidentData.correlation_id
+                )}`
+              );
+
+          } catch (
+            error
+          ) {
+            console.log(
+              "No correlation group available",
+              error
+            );
+          }
+        }
+
+
         if (
           !active
         ) {
@@ -875,6 +947,11 @@ export default function IncidentDetailsPage() {
 
         setThreatIntel(
           threatData
+        );
+
+
+        setCorrelationGroup(
+          correlationData
         );
 
 
@@ -1690,6 +1767,246 @@ export default function IncidentDetailsPage() {
         }
 
       </section>
+
+
+      {/* =================================================
+          CORRELATION
+      ================================================= */}
+
+      {
+        correlationGroup && (
+          <section className="rounded-xl border p-6">
+
+            <div
+              className="
+                flex
+                flex-col
+                gap-3
+                md:flex-row
+                md:items-start
+                md:justify-between
+              "
+            >
+              <div>
+                <h2 className="text-xl font-bold">
+                  Correlation
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-400">
+                  Multi-source incident correlation group.
+                </p>
+              </div>
+
+              <span
+                className="
+                  w-fit
+                  rounded-full
+                  border
+                  border-cyan-500/40
+                  bg-cyan-500/10
+                  px-3
+                  py-1
+                  text-xs
+                  font-medium
+                  text-cyan-300
+                "
+              >
+                {
+                  correlationGroup.incident_count
+                }{" "}
+                incident
+                {
+                  correlationGroup.incident_count === 1
+                    ? ""
+                    : "s"
+                }
+              </span>
+            </div>
+
+
+            <div
+              className="
+                mt-5
+                grid
+                gap-4
+                md:grid-cols-2
+                xl:grid-cols-4
+              "
+            >
+              <div>
+                <p className="text-xs uppercase text-slate-500">
+                  Correlation ID
+                </p>
+
+                <p className="mt-1 break-all font-mono text-sm">
+                  {
+                    correlationGroup.correlation_id
+                  }
+                </p>
+              </div>
+
+
+              <div>
+                <p className="text-xs uppercase text-slate-500">
+                  Sources
+                </p>
+
+                <p className="mt-1 text-sm">
+                  {
+                    correlationGroup.sources.length > 0
+                      ? correlationGroup.sources.join(", ")
+                      : "—"
+                  }
+                </p>
+              </div>
+
+
+              <div>
+                <p className="text-xs uppercase text-slate-500">
+                  Highest Severity
+                </p>
+
+                <p className="mt-1 text-sm">
+                  {
+                    correlationGroup.highest_severity
+                  }
+                </p>
+              </div>
+
+
+              <div>
+                <p className="text-xs uppercase text-slate-500">
+                  Time Window
+                </p>
+
+                <p className="mt-1 text-sm">
+                  {
+                    new Date(
+                      correlationGroup.first_seen
+                    ).toLocaleString()
+                  }
+                  {" → "}
+                  {
+                    new Date(
+                      correlationGroup.last_seen
+                    ).toLocaleString()
+                  }
+                </p>
+              </div>
+            </div>
+
+
+            <div className="mt-6 space-y-3">
+
+              <h3 className="font-semibold">
+                Correlated Incidents
+              </h3>
+
+              {
+                correlationGroup.incidents.map(
+                  (item) => (
+                    <button
+                      key={
+                        item.id
+                      }
+                      type="button"
+                      onClick={
+                        () =>
+                          router.push(
+                            `/incidents/${item.id}`
+                          )
+                      }
+                      className="
+                        block
+                        w-full
+                        rounded-lg
+                        border
+                        border-slate-700
+                        p-4
+                        text-left
+                        hover:bg-slate-800/40
+                      "
+                    >
+                      <div
+                        className="
+                          flex
+                          flex-col
+                          gap-2
+                          md:flex-row
+                          md:items-center
+                          md:justify-between
+                        "
+                      >
+                        <div>
+                          <p className="font-semibold text-cyan-300">
+                            Incident #
+                            {
+                              item.id
+                            }{" "}
+                            ·{" "}
+                            {
+                              item.source || "Unknown source"
+                            }
+                          </p>
+
+                          <p className="mt-1 text-sm text-slate-300">
+                            {
+                              item.title
+                            }
+                          </p>
+                        </div>
+
+                        <div className="text-sm text-slate-400">
+                          Severity:{" "}
+                          <strong className="text-slate-200">
+                            {
+                              item.severity
+                            }
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div
+                        className="
+                          mt-3
+                          grid
+                          gap-2
+                          text-xs
+                          text-slate-500
+                          md:grid-cols-3
+                        "
+                      >
+                        <span>
+                          Source IP:{" "}
+                          {
+                            item.source_ip || "—"
+                          }
+                        </span>
+
+                        <span>
+                          Destination IP:{" "}
+                          {
+                            item.destination_ip || "—"
+                          }
+                        </span>
+
+                        <span>
+                          Workflow:{" "}
+                          {
+                            item.workflow_status || "—"
+                          }
+                        </span>
+                      </div>
+                    </button>
+                  )
+                )
+              }
+
+            </div>
+
+          </section>
+        )
+      }
 
 
       {/* =================================================
